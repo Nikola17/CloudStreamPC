@@ -223,6 +223,7 @@ object PlaybackManager {
         val otherHeaders = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
             .map { (k, v) -> "$k: $v" }
         val resume = resumePosition(next)
+        Logger.info("Chargement de ${link.name}, reprise à ${resume?.toInt() ?: 0} s")
 
         session.switching = true
         session.pendingSubtitles = resolved.subtitles

@@ -36,8 +36,11 @@ private val dateFormat = DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(Zon
 @Composable
 fun LibraryScreen() {
     val nav = LocalNavigator.current
-    var showHistory by rememberSaveable { mutableStateOf(false) }
     val library = Store.library
+    // 0 favorites, 1 history, 2 new episodes (opened first when there are some, like the sidebar badge says).
+    var section by rememberSaveable { mutableStateOf(if (library.newEpisodes.isNotEmpty()) 2 else 0) }
+    if (section == 2 && library.newEpisodes.isEmpty()) section = 0
+    val showHistory = section == 1
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Bibliothèque") {
@@ -46,8 +49,11 @@ fun LibraryScreen() {
             }
         }
         Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(!showHistory, { showHistory = false }, { Text("Favoris (${library.favorites.size})") })
-            FilterChip(showHistory, { showHistory = true }, { Text("Historique (${library.history.size})") })
+            if (library.newEpisodes.isNotEmpty()) {
+                FilterChip(section == 2, { section = 2 }, { Text("Nouveaux épisodes (${library.newEpisodes.size})") })
+            }
+            FilterChip(section == 0, { section = 0 }, { Text("Favoris (${library.favorites.size})") })
+            FilterChip(section == 1, { section = 1 }, { Text("Historique (${library.history.size})") })
         }
 
         val grid: @Composable (content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit) -> Unit = { content ->
@@ -61,7 +67,17 @@ fun LibraryScreen() {
             )
         }
 
-        if (!showHistory) {
+        if (section == 2) {
+            grid {
+                items(library.newEpisodes, key = { "new:" + it.item.apiName + it.item.url }) { release ->
+                    PosterCard(
+                        release.item.name, release.item.posterUrl,
+                        badge = release.label.ifBlank { "NOUVEAU" },
+                        subtitle = if (release.added > 1) "${release.added} nouveaux épisodes" else "Nouvel épisode",
+                    ) { nav.open(release.item) }
+                }
+            }
+        } else if (!showHistory) {
             if (library.favorites.isEmpty()) {
                 MessageBox("Aucun favori", "Ajoutez des titres depuis leur fiche avec « Ajouter aux favoris ».")
             } else grid {

@@ -26,7 +26,6 @@ import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import java.io.DataInputStream
-import java.io.EOFException
 import kotlin.math.max
 
 private const val FRAME_W = 960
@@ -47,20 +46,24 @@ fun SilentVideo(url: String, modifier: Modifier = Modifier, onFirstFrame: () -> 
     val firstFrame by rememberUpdatedState(onFirstFrame)
     val ended by rememberUpdatedState(onEnded)
 
+    // Reading a frame blocks: stopping mpv is what ends it when the video leaves the screen.
+    val process = remember(url) { arrayOfNulls<Process>(1) }
+    DisposableEffect(url) { onDispose { process[0]?.destroy() } }
     DisposableEffect(Unit) { onDispose { bitmaps.forEach { it.close() } } }
 
     LaunchedEffect(url) {
         val mpv = ExternalPlayer.findPlayer(PlayerKind.MPV, null) ?: return@LaunchedEffect ended()
-        val process = withContext(Dispatchers.IO) {
+        val mpvProcess = withContext(Dispatchers.IO) {
             ProcessBuilder(
                 mpv.path, "--no-config", "--terminal=no", "--no-audio", "--o=-", "--of=rawvideo", "--ovc=rawvideo",
                 "--vf=scale=w=$FRAME_W:h=$FRAME_H:force_original_aspect_ratio=increase,crop=$FRAME_W:$FRAME_H,fps=$FPS,format=bgra",
                 "--", url,
             ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
         }
+        process[0] = mpvProcess
         try {
             withContext(Dispatchers.IO) {
-                val input = DataInputStream(process.inputStream.buffered(FRAME_W * FRAME_H * 4))
+                val input = DataInputStream(mpvProcess.inputStream.buffered(FRAME_W * FRAME_H * 4))
                 val frame = ByteArray(FRAME_W * FRAME_H * 4)
                 var next = System.nanoTime()
                 var index = 0
@@ -79,13 +82,13 @@ fun SilentVideo(url: String, modifier: Modifier = Modifier, onFirstFrame: () -> 
                     if (wait > 0) delay(wait / 1_000_000) else next = System.nanoTime()
                 }
             }
-        } catch (_: EOFException) {
-            // End of the video.
+        } catch (_: java.io.IOException) {
+            // End of the video, or mpv stopped.
         } catch (t: Throwable) {
             if (t is kotlinx.coroutines.CancellationException) throw t
             Logger.error("Bande-annonce", t)
         } finally {
-            process.destroy()
+            mpvProcess.destroy()
         }
         ended()
     }

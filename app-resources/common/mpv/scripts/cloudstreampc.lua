@@ -89,12 +89,13 @@ end
 -- Actions
 ---------------------------------------------------------------------------
 
-local function trigger_next()
+local function trigger_next(reason)
     if state.loading or not opts.has_next then return end
+    mp.msg.info(string.format('épisode suivant (%s) à %s / %s', tostring(reason), tostring(state.pos), tostring(state.duration)))
     state.loading = true
     state.loading_since = mp.get_time()
     state.countdown_start = nil
-    mp.set_property_bool('pause', true)
+    -- No pause here: pausing then changing key bindings makes uosc spin (mpv 0.37); the credits keep playing.
     mp.commandv('script-message', 'cspc-next')
 end
 
@@ -108,7 +109,7 @@ local function activate()
     if button.kind == 'skip' then
         skip(button.seg)
     elseif button.kind == 'next' then
-        trigger_next()
+        trigger_next('bouton')
     end
 end
 
@@ -170,18 +171,9 @@ local function set_click_binding(enabled)
     end
 end
 
-local enter_bound = false
-local function set_enter_binding(enabled)
-    if enabled == enter_bound then return end
-    enter_bound = enabled
-    if enabled then
-        mp.add_forced_key_binding('ENTER', 'cspc-enter', activate)
-        mp.add_forced_key_binding('KP_ENTER', 'cspc-kp-enter', activate)
-    else
-        mp.remove_key_binding('cspc-enter')
-        mp.remove_key_binding('cspc-kp-enter')
-    end
-end
+-- Enter activates the visible button. Bound once: adding and removing bindings while paused makes uosc spin.
+mp.add_forced_key_binding('ENTER', 'cspc-enter', activate)
+mp.add_forced_key_binding('KP_ENTER', 'cspc-kp-enter', activate)
 
 local function render()
     local now = mp.get_time()
@@ -210,7 +202,7 @@ local function render()
             local remaining = math.max(0, COUNTDOWN - (now - state.countdown_start))
             label = string.format('%s · %d s', label, math.ceil(remaining))
             progress = 1 - remaining / COUNTDOWN
-            if remaining <= 0 then trigger_next() end
+            if remaining <= 0 then trigger_next('compte à rebours') end
         end
         local chars = select(2, label:gsub('[^\128-\191]', ''))  -- UTF-8 characters, not bytes
         local bw = math.floor((chars * 0.5 * font) + 64 * s)
@@ -245,7 +237,6 @@ local function render()
         set_click_binding(false)
     end
     state.button = button
-    set_enter_binding(button ~= nil and button.kind ~= 'loading')
 
     if state.message and now < state.message_until then
         table.insert(lines, text(w / 2, math.floor(h - 110 * s), math.floor(24 * s), 'ffffff', state.message))
@@ -291,7 +282,7 @@ end)
 mp.observe_property('eof-reached', 'bool', function(_, eof)
     if not eof then return end
     if opts.has_next and opts.auto_next then
-        trigger_next()
+        trigger_next('fin de la vidéo')
     elseif not opts.has_next then
         mp.command('quit')
     end
@@ -324,7 +315,7 @@ mp.register_script_message('next-failed', function(reason)
     msg(reason and reason ~= '' and reason or "Aucune source disponible pour l'épisode suivant", 5)
 end)
 
-mp.register_script_message('next', trigger_next)
-mp.add_key_binding('N', 'cspc-next-episode', trigger_next)
+mp.register_script_message('next', function() trigger_next('commande') end)
+mp.add_key_binding('N', 'cspc-next-episode', function() trigger_next('touche N') end)
 
 mp.add_periodic_timer(0.2, render)

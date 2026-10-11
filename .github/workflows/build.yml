@@ -59,6 +59,23 @@ jobs:
           7z x mpv.7z -oapp-resources/windows/mpv -y | Out-Null
           if (-not (Test-Path app-resources/windows/mpv/mpv.exe)) { throw "mpv.exe absent de l'archive" }
 
+      # yt-dlp lets mpv read YouTube trailers. Latest release: YouTube changes often.
+      - name: Download yt-dlp
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force app-resources/windows/yt-dlp | Out-Null
+          $base = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+          Invoke-WebRequest -Uri "$base/yt-dlp.exe" -OutFile app-resources/windows/yt-dlp/yt-dlp.exe
+          Invoke-WebRequest -Uri "$base/SHA2-256SUMS" -OutFile yt-dlp-sums.txt
+          $expected = (Select-String -Path yt-dlp-sums.txt -Pattern ' yt-dlp\.exe$').Line.Split(' ')[0]
+          $actual = (Get-FileHash app-resources/windows/yt-dlp/yt-dlp.exe -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "Somme de contrôle de yt-dlp.exe invalide" }
+          app-resources/windows/yt-dlp/yt-dlp.exe --version
+
+      # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
+      - name: Test mpv IPC on Windows
+        run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
+
       - name: Build installers
         run: ./gradlew --no-daemon packageMsi packageExe createDistributable
 

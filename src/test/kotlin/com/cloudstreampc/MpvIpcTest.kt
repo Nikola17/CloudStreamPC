@@ -6,14 +6,14 @@ import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** Needs mpv installed; skipped otherwise. */
+/** Needs mpv (system, or `-Dtest.mpv`); skipped otherwise. */
 class MpvIpcTest {
     @Test
     fun readsPositionAndDuration() {
-        val mpv = listOf("/usr/bin/mpv", "/usr/local/bin/mpv").map(::File).firstOrNull { it.isFile } ?: return
+        val mpv = mpvExecutable() ?: return
         val path = MpvIpc.newServerPath()
         val process = ProcessBuilder(
-            mpv.path, "--vo=null", "--ao=null", "--no-config", "--input-ipc-server=$path",
+            mpv, "--vo=null", "--ao=null", "--no-config", "--input-ipc-server=$path",
             "av://lavfi:testsrc=duration=4:rate=10",
         ).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
 
@@ -59,5 +59,7 @@ class MpvIpcTest {
         observer.join(5_000)
     }
 
-    private fun mpvExecutable() = listOf("/usr/bin/mpv", "/usr/local/bin/mpv").map(::File).firstOrNull { it.isFile }?.path
+    /** `-Dtest.mpv=...` (the Windows build passes the bundled mpv.exe), or the system mpv. */
+    private fun mpvExecutable() = (listOfNotNull(System.getProperty("test.mpv")) + listOf("/usr/bin/mpv", "/usr/local/bin/mpv"))
+        .map(::File).firstOrNull { it.isFile }?.absolutePath
 }

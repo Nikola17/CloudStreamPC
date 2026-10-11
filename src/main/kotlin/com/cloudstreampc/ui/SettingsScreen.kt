@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "2.1.0"
+const val APP_VERSION = "2.2.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
