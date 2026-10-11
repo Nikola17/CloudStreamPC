@@ -83,6 +83,7 @@ fun App(nav: Navigator) {
                                 }
                             }
                         }
+                        PlaybackOverlays(Modifier.align(Alignment.BottomStart))
                         SnackbarHost(nav.snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                     }
                 }

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.cloudstreampc.plugins.PluginManager
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.TvType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -92,6 +93,8 @@ fun SearchScreen() {
                         val result = try {
                             val items = withContext(Dispatchers.IO) { api.search(query, 1)?.items.orEmpty() }
                             ProviderResult.Done(items)
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             ProviderResult.Failed(t.message ?: t.javaClass.simpleName)
                         }

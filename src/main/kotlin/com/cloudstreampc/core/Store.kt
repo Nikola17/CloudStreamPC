@@ -31,7 +31,32 @@ data class Settings(
     val homeProvider: String? = null,
     val autoUpdatePlugins: Boolean = true,
     val firstLaunchDone: Boolean = false,
+    /** Highest quality to pick automatically (e.g. 1080); null picks the best available. */
+    val preferredQuality: Int? = null,
+    /** Skip the source list and play the best source right away. */
+    val autoPlayBestSource: Boolean = false,
+    val autoPlayNextEpisode: Boolean = true,
+    val resumePlayback: Boolean = true,
+    val fullscreen: Boolean = true,
+    /** Comma separated languages given to mpv (`--slang` / `--alang`). */
+    val subtitleLanguages: String = "fr,fre,fra,french",
+    val audioLanguages: String = "fr,fre,fra,french",
+    val subtitleSize: Int = 55,
 )
+
+/** Playback position of a movie or episode, in seconds. */
+data class WatchProgress(
+    val position: Double = 0.0,
+    val duration: Double = 0.0,
+    val updatedAt: Long = 0,
+) {
+    val fraction: Float get() = if (duration > 0) (position / duration).coerceIn(0.0, 1.0).toFloat() else 0f
+    val finished: Boolean get() = duration > 0 && position / duration >= WATCHED_THRESHOLD
+
+    companion object {
+        const val WATCHED_THRESHOLD = 0.9
+    }
+}
 
 /** Enough information to reopen a title with `MainAPI.load(url)`. */
 data class SavedItem(
@@ -55,6 +80,8 @@ data class UserLibrary(
     val history: List<HistoryEntry> = emptyList(),
     /** Keys built by [Store.watchedKey]. */
     val watched: Set<String> = emptySet(),
+    /** Resume positions, keyed like [watched]. */
+    val progress: Map<String, WatchProgress> = emptyMap(),
 )
 
 /** Persistent app state, observable from Compose. */
@@ -94,7 +121,33 @@ object Store {
         lib.copy(
             history = (listOf(entry) + lib.history.filterNot { it.item.apiName == item.apiName && it.item.url == item.url })
                 .take(200),
-            watched = lib.watched + watchedKey(item.apiName, episodeData),
+        )
+    }
+
+    fun progressOf(apiName: String, episodeData: String): WatchProgress? =
+        library.progress[watchedKey(apiName, episodeData)]
+
+    fun isWatched(apiName: String, episodeData: String) = watchedKey(apiName, episodeData) in library.watched
+
+    /** Saves a resume position; past 90 % the movie/episode counts as watched and restarts from zero. */
+    fun saveProgress(apiName: String, episodeData: String, position: Double, duration: Double) = updateLibrary { lib ->
+        val key = watchedKey(apiName, episodeData)
+        val progress = WatchProgress(position, duration, System.currentTimeMillis())
+        if (progress.finished) {
+            lib.copy(watched = lib.watched + key, progress = lib.progress - key)
+        } else {
+            // Keep the 500 most recent positions.
+            val updated = (lib.progress + (key to progress)).entries
+                .sortedByDescending { it.value.updatedAt }.take(500).associate { it.key to it.value }
+            lib.copy(progress = updated)
+        }
+    }
+
+    fun setWatched(apiName: String, episodeData: String, watched: Boolean) = updateLibrary { lib ->
+        val key = watchedKey(apiName, episodeData)
+        lib.copy(
+            watched = if (watched) lib.watched + key else lib.watched - key,
+            progress = lib.progress - key,
         )
     }
 

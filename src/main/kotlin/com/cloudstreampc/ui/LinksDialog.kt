@@ -39,29 +39,46 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Logger
 import com.cloudstreampc.core.Store
 import com.cloudstreampc.player.ExternalPlayer
-import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.MainAPI
+import com.cloudstreampc.player.PlayRequest
+import com.cloudstreampc.player.PlaybackManager
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
 /** Fetches the sources of a movie/episode and lets the user pick one, like the app's source picker. */
 @Composable
-fun LinksDialog(api: MainAPI, response: LoadResponse, target: Playable, onDismiss: () -> Unit) {
+fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
     val nav = LocalNavigator.current
-    val links = remember(target) { mutableStateListOf<ExtractorLink>() }
-    val subtitles = remember(target) { mutableStateListOf<SubtitleFile>() }
-    var loading by remember(target) { mutableStateOf(true) }
-    var error by remember(target) { mutableStateOf<String?>(null) }
+    val target = request.playable
+    val links = remember(request) { mutableStateListOf<ExtractorLink>() }
+    val subtitles = remember(request) { mutableStateListOf<SubtitleFile>() }
+    var loading by remember(request) { mutableStateOf(true) }
+    var error by remember(request) { mutableStateOf<String?>(null) }
+    var started by remember(request) { mutableStateOf(false) }
+    val autoPlay = request.autoPlay || Store.settings.autoPlayBestSource
+    val resumeAt = remember(request) { PlaybackManager.resumePosition(request) }
 
-    LaunchedEffect(target) {
+    fun play(link: ExtractorLink) {
+        if (started) return
+        try {
+            started = true
+            PlaybackManager.play(request, link, subtitles.toList())
+            nav.toast("Lecture lancée : ${link.name}")
+        } catch (t: Throwable) {
+            started = false
+            nav.toast(t.message ?: "Impossible de lancer le lecteur")
+        }
+    }
+
+    LaunchedEffect(request) {
         try {
             withContext(Dispatchers.IO) {
-                api.loadLinks(
+                request.api.loadLinks(
                     target.data,
                     false,
                     { sub -> if (subtitles.none { it.url == sub.url }) subtitles += sub },
@@ -69,36 +86,47 @@ fun LinksDialog(api: MainAPI, response: LoadResponse, target: Playable, onDismis
                 )
             }
         } catch (t: Throwable) {
-            Logger.error("loadLinks ${api.name}", t)
+            Logger.error("loadLinks ${request.api.name}", t)
             error = t.message ?: t.toString()
         } finally {
             loading = false
         }
     }
 
-    fun play(link: ExtractorLink) {
-        val title = listOfNotNull(target.title, target.label).joinToString(" · ")
-        try {
-            ExternalPlayer.play(link, title, subtitles.toList())
-            Store.addHistory(response.toSavedItem(), target.label, target.data)
-            nav.toast("Lecture lancée : ${link.name}")
-            onDismiss()
-        } catch (t: Throwable) {
-            nav.toast(t.message ?: "Impossible de lancer le lecteur")
+    // Automatic mode: play the best source once every extractor answered, or after 10 s if some already did.
+    LaunchedEffect(request, autoPlay) {
+        if (!autoPlay) return@LaunchedEffect
+        var waited = 0
+        while (loading && (waited < 10_000 || links.isEmpty())) {
+            delay(250)
+            waited += 250
         }
+        // Subtitles often arrive with the last links: give them a moment.
+        if (!loading) delay(300)
+        PlaybackManager.bestLink(links, request.failedSources)?.let { play(it) }
     }
 
-    val sorted = links.sortedWith(compareByDescending<ExtractorLink> { it.quality }.thenBy { it.name })
+    val best = PlaybackManager.bestLink(links, request.failedSources)
+    val sorted = links.sortedWith(compareByDescending<ExtractorLink> { it == best }.thenByDescending { it.quality }.thenBy { it.name })
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
-                Text("Choisir une source", fontWeight = FontWeight.SemiBold)
+                Text(if (autoPlay && !started) "Lecture automatique…" else "Choisir une source", fontWeight = FontWeight.SemiBold)
                 Text(
                     listOfNotNull(target.title, target.label).joinToString(" · "),
                     fontSize = 13.sp, color = CsColors.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                if (resumeAt != null) {
+                    Text("Reprise à ${formatTime(resumeAt)}", fontSize = 13.sp, color = CsColors.Primary)
+                }
+                request.failedSources.lastOrNull()?.let { failed ->
+                    Text(
+                        "« $failed » n'a pas pu être lue. Choisissez une autre source.",
+                        fontSize = 13.sp, color = CsColors.Error, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         },
         text = {
@@ -123,24 +151,22 @@ fun LinksDialog(api: MainAPI, response: LoadResponse, target: Playable, onDismis
                         color = CsColors.TextMuted,
                     )
                     else -> LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(sorted, key = { it.url }) { link -> LinkRow(link, onPlay = { play(link) }) }
+                        items(sorted, key = { it.url }) { link ->
+                            LinkRow(link, recommended = link == best, failed = link.name in request.failedSources, onPlay = { play(link) })
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            if (sorted.isNotEmpty()) {
-                TextButton(onClick = { play(sorted.first { ExternalPlayer.isPlayable(it) }) }, enabled = sorted.any { ExternalPlayer.isPlayable(it) }) {
-                    Text("Lire la meilleure")
-                }
-            }
+            if (best != null) TextButton(onClick = { play(best) }) { Text("Lire la meilleure") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
     )
 }
 
 @Composable
-private fun LinkRow(link: ExtractorLink, onPlay: () -> Unit) {
+private fun LinkRow(link: ExtractorLink, recommended: Boolean, failed: Boolean, onPlay: () -> Unit) {
     val playable = ExternalPlayer.isPlayable(link)
     Row(
         Modifier
@@ -152,12 +178,25 @@ private fun LinkRow(link: ExtractorLink, onPlay: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(link.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(link.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (recommended) {
+                    Text(
+                        "Recommandée", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(4.dp))
+                            .background(CsColors.Primary).padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
             val quality = Qualities.getStringByInt(link.quality).ifBlank { "Qualité inconnue" }
             Text(
                 listOf(quality, link.type.name, hostOf(link.url)).distinct().joinToString(" · ") +
-                    if (playable) "" else " · non pris en charge",
-                fontSize = 12.sp, color = CsColors.TextMuted,
+                    when {
+                        !playable -> " · non pris en charge"
+                        failed -> " · échec de lecture"
+                        else -> ""
+                    },
+                fontSize = 12.sp, color = if (failed) CsColors.Error else CsColors.TextMuted,
             )
         }
         IconButton(onClick = {

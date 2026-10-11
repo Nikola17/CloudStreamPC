@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.lagradost.cloudstream3.app
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -25,21 +26,24 @@ object ImageLoader {
     private val cache = Collections.synchronizedMap(object : LinkedHashMap<String, ImageBitmap>(300, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 300
     })
-    private val failed = Collections.synchronizedSet(mutableSetOf<String>())
+    /** url -> time of the failure; retried after a minute. */
+    private val failed = Collections.synchronizedMap(mutableMapOf<String, Long>())
     private val permits = Semaphore(8)
 
     fun cached(url: String): ImageBitmap? = cache[url]
 
     suspend fun load(url: String, headers: Map<String, String>?): ImageBitmap? {
         cache[url]?.let { return it }
-        if (url in failed) return null
+        failed[url]?.let { if (System.currentTimeMillis() - it < 60_000) return null }
         return withContext(Dispatchers.IO) {
             permits.withPermit {
                 try {
                     val bytes = app.get(url, headers = headers ?: emptyMap()).body.bytes()
                     org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap().also { cache[url] = it }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Throwable) {
-                    failed += url
+                    failed[url] = System.currentTimeMillis()
                     null
                 }
             }

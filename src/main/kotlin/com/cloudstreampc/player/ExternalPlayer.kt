@@ -24,7 +24,18 @@ object ExternalPlayer {
     fun isPlayable(link: ExtractorLink) =
         link.type != ExtractorLinkType.TORRENT && link.type != ExtractorLinkType.MAGNET
 
-    fun play(link: ExtractorLink, title: String, subtitles: List<SubtitleFile>) {
+    /**
+     * Starts the player.
+     * @param startAt position to resume from, in seconds
+     * @param ipcPath mpv IPC server path, used to follow the playback position
+     */
+    fun play(
+        link: ExtractorLink,
+        title: String,
+        subtitles: List<SubtitleFile>,
+        startAt: Double? = null,
+        ipcPath: String? = null,
+    ): Process {
         val settings = Store.settings
         val kind = settings.player
         val executable = findPlayer(kind, settings.playerPath) ?: throw PlayerNotFound(kind)
@@ -37,6 +48,12 @@ object ExternalPlayer {
             PlayerKind.MPV -> {
                 command += "--force-window=immediate"
                 command += "--force-media-title=$title"
+                if (settings.fullscreen) command += "--fs"
+                if (startAt != null) command += "--start=+${startAt.toInt()}"
+                if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
+                settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
+                settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
+                command += "--sub-font-size=${settings.subtitleSize}"
                 command += "--user-agent=$userAgent"
                 if (referer != null) command += "--referrer=$referer"
                 headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
@@ -47,7 +64,9 @@ object ExternalPlayer {
             }
             PlayerKind.VLC -> {
                 command += "--meta-title=$title"
+                if (settings.fullscreen) command += "--fullscreen"
                 command += link.url
+                if (startAt != null) command += ":start-time=${startAt.toInt()}"
                 command += ":http-user-agent=$userAgent"
                 if (referer != null) command += ":http-referrer=$referer"
                 subtitles.firstOrNull()?.let { command += ":input-slave=${it.url}" }
@@ -55,7 +74,7 @@ object ExternalPlayer {
             PlayerKind.CUSTOM -> command += link.url
         }
         Logger.info("Lecture : ${link.name} ${link.url}")
-        ProcessBuilder(command)
+        return ProcessBuilder(command)
             .redirectErrorStream(true)
             .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log"))
             .start()

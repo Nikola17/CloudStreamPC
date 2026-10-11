@@ -36,6 +36,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.SavedItem
 import com.cloudstreampc.core.Store
+import com.cloudstreampc.player.PlaybackManager
+import com.cloudstreampc.player.PlayRequest
+import com.cloudstreampc.player.Playable
 import com.cloudstreampc.plugins.PluginManager
 import com.lagradost.cloudstream3.AnimeLoadResponse
 import com.lagradost.cloudstream3.DubStatus
@@ -76,8 +81,6 @@ import java.net.URI
 /** Load responses already fetched this session, so going back is instant. */
 private val detailsCache = mutableMapOf<String, LoadResponse>()
 
-/** Something that can be played: a movie, an episode or a live channel. */
-data class Playable(val data: String, val label: String?, val title: String)
 
 private fun TvType.label() = when (this) {
     TvType.Movie -> "Film"
@@ -143,7 +146,6 @@ fun DetailsScreen(route: Route.Details) {
 @Composable
 private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     val nav = LocalNavigator.current
-    var playing by remember { mutableStateOf<Playable?>(null) }
     val saved = data.toSavedItem()
 
     // Episodes, grouped by dub status (animes) then by season.
@@ -163,16 +165,27 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
         )
     }
 
+    fun episodeLabelOf(ep: Episode, index: Int): String {
+        val number = ep.episode ?: (index + 1)
+        val prefix = if (ep.season != null) "S${ep.season}·E$number" else "Épisode $number"
+        return if (ep.name.isNullOrBlank()) prefix else "$prefix  ${ep.name}"
+    }
+
+    // Everything playable from this page, in order, so the next episode can follow.
+    val queue: List<Playable> = when (data) {
+        is MovieLoadResponse -> listOf(Playable(data.dataUrl, null, data.name))
+        is LiveStreamLoadResponse -> listOf(Playable(data.dataUrl, null, data.name))
+        else -> episodes.mapIndexed { index, ep -> Playable(ep.data, episodeLabelOf(ep, index), data.name) }
+    }
+
+    fun play(index: Int) {
+        if (index in queue.indices) PlaybackManager.request(PlayRequest(api, data, queue, index))
+    }
+
     fun seasonLabel(number: Int?): String {
         if (number == null) return "Épisodes"
         val custom = seasonNames?.firstOrNull { it.season == number }
         return custom?.name ?: "Saison ${custom?.displaySeason ?: number}"
-    }
-
-    fun episodeLabel(ep: Episode, index: Int): String {
-        val number = ep.episode ?: (index + 1)
-        val prefix = if (ep.season != null) "S${ep.season}·E$number" else "Épisode $number"
-        return if (ep.name.isNullOrBlank()) prefix else "$prefix  ${ep.name}"
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -218,25 +231,27 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                             }
                         }
                         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            val mainPlayable: Playable? = when (data) {
-                                is MovieLoadResponse -> Playable(data.dataUrl, null, data.name)
-                                is LiveStreamLoadResponse -> Playable(data.dataUrl, null, data.name)
-                                else -> {
-                                    val resume = episodes.withIndex().firstOrNull { it.value.data == lastWatched?.episodeData }
-                                    val target = resume ?: episodes.withIndex().firstOrNull()
-                                    target?.let { Playable(it.value.data, episodeLabel(it.value, it.index), data.name) }
-                                }
+                            // Last episode launched; once it is watched, the next one is proposed.
+                            val lastIndex = queue.indexOfFirst { it.data == lastWatched?.episodeData }
+                            val mainIndex = when {
+                                queue.isEmpty() -> -1
+                                lastIndex < 0 -> 0
+                                Store.isWatched(data.apiName, queue[lastIndex].data) && lastIndex + 1 < queue.size -> lastIndex + 1
+                                else -> lastIndex
                             }
-                            if (mainPlayable != null) {
-                                Button(onClick = { playing = mainPlayable }) {
+                            if (mainIndex >= 0) {
+                                val target = queue[mainIndex]
+                                val progress = Store.progressOf(data.apiName, target.data)?.takeIf { it.position > 15 }
+                                val episode = target.label?.substringBefore("  ")
+                                Button(onClick = { play(mainIndex) }) {
                                     Icon(Icons.Default.PlayArrow, null)
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         when {
                                             data is LiveStreamLoadResponse -> "Regarder en direct"
-                                            mainPlayable.label == null -> "Lire"
-                                            lastWatched?.episodeData == mainPlayable.data -> "Reprendre ${mainPlayable.label.substringBefore("  ")}"
-                                            else -> "Lire ${mainPlayable.label.substringBefore("  ")}"
+                                            progress != null -> listOfNotNull("Reprendre", episode, "(${formatTime(progress.position)})").joinToString(" ")
+                                            episode != null -> "Lire $episode"
+                                            else -> "Lire"
                                         }
                                     )
                                 }
@@ -295,12 +310,14 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
             }
             val visible = episodes.withIndex().filter { seasons.size <= 1 || it.value.season == season }
             items(visible, key = { "${dub}/${it.index}/${it.value.data}" }) { (index, ep) ->
-                val label = episodeLabel(ep, index)
+                val watched = Store.isWatched(data.apiName, ep.data)
                 EpisodeRow(
-                    ep, label,
-                    watched = Store.watchedKey(data.apiName, ep.data) in Store.library.watched,
+                    ep, queue[index].label.orEmpty(),
+                    watched = watched,
+                    progress = Store.progressOf(data.apiName, ep.data)?.fraction,
                     current = lastWatched?.episodeData == ep.data,
-                ) { playing = Playable(ep.data, label, data.name) }
+                    onToggleWatched = { Store.setWatched(data.apiName, ep.data, !watched) },
+                ) { play(index) }
             }
         }
 
@@ -312,13 +329,18 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
         }
     }
 
-    playing?.let { target ->
-        LinksDialog(api, data, target, onDismiss = { playing = null })
-    }
 }
 
 @Composable
-private fun EpisodeRow(ep: Episode, label: String, watched: Boolean, current: Boolean, onClick: () -> Unit) {
+private fun EpisodeRow(
+    ep: Episode,
+    label: String,
+    watched: Boolean,
+    progress: Float?,
+    current: Boolean,
+    onToggleWatched: () -> Unit,
+    onClick: () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     Row(
@@ -336,6 +358,16 @@ private fun EpisodeRow(ep: Episode, label: String, watched: Boolean, current: Bo
         Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(8.dp)).background(CsColors.SurfaceHigh), contentAlignment = Alignment.Center) {
             if (ep.posterUrl != null) RemoteImage(ep.posterUrl, Modifier.fillMaxSize())
             Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(alpha = if (hovered) 1f else 0.7f), modifier = Modifier.size(36.dp))
+            if (progress != null) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
+                    color = CsColors.Primary,
+                    trackColor = Color.Black.copy(alpha = 0.5f),
+                    drawStopIndicator = {},
+                    gapSize = 0.dp,
+                )
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -344,7 +376,13 @@ private fun EpisodeRow(ep: Episode, label: String, watched: Boolean, current: Bo
             }
             ep.runTime?.let { Text("$it min", color = CsColors.TextMuted, fontSize = 12.sp) }
         }
-        if (watched) Icon(Icons.Default.CheckCircle, "Vu", tint = CsColors.Good)
+        IconButton(onClick = onToggleWatched) {
+            Icon(
+                Icons.Default.CheckCircle,
+                if (watched) "Marquer comme non vu" else "Marquer comme vu",
+                tint = if (watched) CsColors.Good else CsColors.TextMuted.copy(alpha = if (hovered) 0.8f else 0.25f),
+            )
+        }
     }
 }
 

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,6 +61,7 @@ fun PosterCard(
     badge: String? = null,
     subtitle: String? = null,
     horizontal: Boolean = false,
+    progress: Float? = null,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -86,6 +88,16 @@ fun PosterCard(
                         modifier = Modifier.padding(8.dp), maxLines = 4, overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            if (progress != null) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
+                    color = CsColors.Primary,
+                    trackColor = Color.Black.copy(alpha = 0.6f),
+                    drawStopIndicator = {},
+                    gapSize = 0.dp,
+                )
             }
             if (badge != null) {
                 Text(
@@ -194,4 +206,13 @@ fun MessageBox(
             action()
         }
     }
+}
+
+/** 754.2 -> "12:34", 3723.0 -> "1:02:03". */
+fun formatTime(seconds: Double): String {
+    val total = seconds.toLong().coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }

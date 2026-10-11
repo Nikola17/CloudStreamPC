@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.cloudstreampc.core.HistoryEntry
 import com.cloudstreampc.core.Store
 import com.cloudstreampc.plugins.PluginManager
 import com.lagradost.cloudstream3.HomePageList
@@ -125,14 +127,27 @@ fun HomeScreen() {
             }
         }
 
+        // Unfinished titles, plus series whose last launched episode was finished (next one to watch).
+        val continueWatching = Store.library.history.filter { entry ->
+            val data = entry.episodeData ?: return@filter false
+            entry.item.type != "Live" && (!Store.isWatched(entry.item.apiName, data) || entry.episodeLabel != null)
+        }.take(20)
+
         val ordered = HomeState.sections.toSortedMap().flatMap { (index, lists) -> lists.map { index to it } }
         when {
-            ordered.isEmpty() && HomeState.loading -> LoadingBox("Chargement de ${selected.name}…")
-            ordered.isEmpty() && HomeState.error != null -> MessageBox(
-                "Impossible de charger ${selected.name}", HomeState.error,
-            ) { FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") } }
+            ordered.isEmpty() && HomeState.loading -> Column {
+                ContinueWatchingRow(continueWatching)
+                LoadingBox("Chargement de ${selected.name}…")
+            }
+            ordered.isEmpty() && HomeState.error != null -> Column {
+                ContinueWatchingRow(continueWatching)
+                MessageBox("Impossible de charger ${selected.name}", HomeState.error) {
+                    FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") }
+                }
+            }
 
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+                item(key = "continue") { ContinueWatchingRow(continueWatching) }
                 items(ordered, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
                     val page = selected.mainPage.getOrNull(index)
                     PosterRow(
@@ -144,6 +159,41 @@ fun HomeScreen() {
                     )
                 }
                 if (HomeState.loading) item { LoadingBox(modifier = Modifier.fillMaxWidth().height(120.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingRow(entries: List<HistoryEntry>) {
+    if (entries.isEmpty()) return
+    val nav = LocalNavigator.current
+    Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
+        Text(
+            "Continuer à regarder",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(entries, key = { it.item.apiName + it.item.url }) { entry ->
+                val progress = entry.episodeData?.let { Store.progressOf(entry.item.apiName, it) }
+                PosterCard(
+                    entry.item.name,
+                    entry.item.posterUrl,
+                    subtitle = when {
+                        entry.episodeData != null && Store.isWatched(entry.item.apiName, entry.episodeData) ->
+                            "Épisode suivant"
+                        else -> listOfNotNull(
+                            entry.episodeLabel?.substringBefore("  "),
+                            progress?.let { "${formatTime(it.position)} / ${formatTime(it.duration)}" },
+                        ).joinToString(" · ").ifBlank { entry.item.apiName }
+                    },
+                    progress = progress?.fraction,
+                ) { nav.open(entry.item) }
             }
         }
     }

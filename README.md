@@ -26,9 +26,20 @@ Java et le lecteur vidéo [mpv](https://mpv.io) sont inclus : rien d'autre à in
 - **Fiche** : saisons, épisodes, VF/VOSTFR pour les animés, recommandations, favoris. Le bouton
   **Lire** ouvre la liste des sources ; choisissez-en une (ou « Lire la meilleure ») et la vidéo
   s'ouvre dans mpv avec les sous-titres disponibles.
-- **Bibliothèque** : favoris et historique (« Reprendre » propose le dernier épisode lancé).
-- **Paramètres** : choix du lecteur (mpv inclus, VLC ou autre), mise à jour automatique des
-  extensions, accès aux données et aux journaux.
+- **Reprise de lecture** : la position est enregistrée pendant la lecture dans mpv ; « Reprendre »
+  relance le film ou l'épisode à la seconde près. Un épisode vu à 90 % est coché comme vu (la coche
+  à droite de chaque épisode permet aussi de le marquer à la main).
+- **Continuer à regarder** en haut de l'accueil : films commencés et prochain épisode des séries.
+- **Épisode suivant** : à la fin d'un épisode, le suivant se lance après un compte à rebours de 10 s.
+- **Sources** : la source recommandée suit la qualité préférée ; si une source ne se lit pas, la
+  liste revient automatiquement pour en choisir une autre.
+- **Bibliothèque** : favoris et historique.
+- **Paramètres** : choix du lecteur (mpv inclus, VLC ou autre), reprise, épisode suivant, lecture
+  directe de la meilleure source, plein écran, qualité préférée, langues audio/sous-titres et taille
+  des sous-titres, mise à jour automatique des extensions, accès aux données et aux journaux.
+
+L'enregistrement de la position et l'épisode suivant automatique nécessitent mpv (le lecteur
+inclus) : avec VLC, la position n'est pas enregistrée.
 
 Raccourcis : `Échap`, `Alt+←` ou le bouton « précédent » de la souris pour revenir en arrière.
 
