@@ -1,0 +1,78 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path build.gradle.kts -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      # mpv is bundled so videos play without installing anything else.
+      - name: Download mpv
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "CloudStreamPC" }
+          $release = Invoke-RestMethod -Headers $headers https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest
+          $asset = $release.assets | Where-Object { $_.name -match '^mpv-x86_64-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
+          if (-not $asset) { throw "Aucune archive mpv trouvée" }
+          Write-Host "mpv : $($asset.name)"
+          Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile mpv.7z
+          New-Item -ItemType Directory -Force app-resources/windows/mpv | Out-Null
+          7z x mpv.7z -oapp-resources/windows/mpv -y | Out-Null
+          if (-not (Test-Path app-resources/windows/mpv/mpv.exe)) { throw "mpv.exe absent de l'archive" }
+
+      - name: Build installers
+        run: ./gradlew --no-daemon packageMsi packageExe createDistributable
+
+      - name: Collect files
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Get-ChildItem build/compose/binaries/main/msi/*.msi | Copy-Item -Destination "dist/CloudStreamPC-$v.msi"
+          Get-ChildItem build/compose/binaries/main/exe/*.exe | Copy-Item -Destination "dist/CloudStreamPC-$v-setup.exe"
+          Compress-Archive -Path build/compose/binaries/main/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v-portable.zip"
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CloudStreamPC-windows
+          path: dist/*
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: CloudStreamPC ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: dist/*
+          body: |
+            **Installation :** téléchargez `CloudStreamPC-${{ steps.version.outputs.version }}-setup.exe` et lancez-le.
+            Version sans installation : `CloudStreamPC-${{ steps.version.outputs.version }}-portable.zip` (décompressez puis lancez `CloudStreamPC.exe`).
+
+            Windows peut afficher « Windows a protégé votre ordinateur » car l'application n'est pas signée :
+            cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
