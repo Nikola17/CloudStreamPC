@@ -40,7 +40,7 @@ class TrailersTest {
             exchange.responseBody.use { it.write(body) }
         }
         server.start()
-        Trailers.cinemetaBase = "http://127.0.0.1:${server.address.port}"
+        com.cloudstreampc.providers.Cinemeta.base = "http://127.0.0.1:${server.address.port}"
         Trailers.clearCache()
     }
 

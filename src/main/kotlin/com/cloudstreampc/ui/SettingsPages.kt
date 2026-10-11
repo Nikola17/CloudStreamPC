@@ -46,7 +46,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import javax.swing.JFileChooser
 
-private fun chooseFolder(title: String): String? {
+internal fun chooseFolder(title: String): String? {
     val chooser = JFileChooser().apply {
         dialogTitle = title
         fileSelectionMode = JFileChooser.DIRECTORIES_ONLY

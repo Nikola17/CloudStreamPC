@@ -161,6 +161,11 @@ fun AccountSettings() {
         if (s.iptvAccounts.isEmpty()) "Ajouter un abonnement Xtream Codes ou une playlist M3U" else s.iptvAccounts.joinToString(", ") { it.name },
     ) { nav.push(Route.Settings(SettingsPage.Iptv)) }
     SettingsItem(
+        "Suivi et synchronisation",
+        com.cloudstreampc.sync.Trackers.connected().joinToString(", ") { it.name }.ifBlank { "AniList, MyAnimeList, Simkl, Trakt, synchronisation entre PC" } +
+            if (s.syncDir != null) " · dossier partagé" else "",
+    ) { nav.push(Route.Settings(SettingsPage.Tracking)) }
+    SettingsItem(
         "Addons Stremio",
         if (s.stremioAddons.isEmpty()) "Catalogues, flux et sous-titres des addons Stremio" else "${s.stremioAddons.size} addon(s)",
     ) { nav.push(Route.Settings(SettingsPage.Extensions)) }

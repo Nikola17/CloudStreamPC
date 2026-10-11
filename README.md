@@ -77,6 +77,16 @@ vient de l'extension ou du catalogue Cinemeta, lue depuis YouTube grâce à [yt-
 **Fiches** : saisons, épisodes, VF/VOSTFR, progression, distribution, recommandations, favoris,
 téléchargement d'un film ou d'un épisode.
 
+**Suivi** (Paramètres → Comptes et Sécurité → Suivi et synchronisation) : les épisodes et films vus jusqu'au
+bout sont envoyés à **AniList** et **MyAnimeList** (animés) et à **Simkl** et **Trakt** (tout). La liste « en cours /
+à voir » de chaque compte apparaît dans la Bibliothèque ; un clic cherche le titre dans vos extensions. Ces services
+demandent que chaque utilisateur déclare l'application une fois sur leur site (gratuit, une minute) : la fenêtre de
+connexion indique quoi remplir, puis la connexion se fait dans le navigateur ou avec un code.
+
+**Synchronisation entre PC** : choisissez un dossier partagé (OneDrive, Google Drive, Dropbox…) présent sur vos
+ordinateurs ; favoris, historique, progression et goûts de chaque profil y sont fusionnés automatiquement (ajouts
+et suppressions des deux côtés).
+
 **Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche.
 
 **Téléchargements** : vidéos directes et flux HLS (y compris chiffrés AES-128), pause / reprise,
@@ -131,7 +141,8 @@ de signature avec un certificat jetable (sans publier de version).
 ## Limites connues
 
 - Les flux **torrent** (certaines extensions, addons Stremio comme Torrentio) ne sont pas lisibles.
-- Pas de synchronisation AniList / MyAnimeList / Simkl ni de Chromecast.
+- Les comptes AniList, MyAnimeList, Simkl et Trakt nécessitent un identifiant d'application que chaque
+  utilisateur crée une fois sur le service (CloudStreamPC n'a pas de compte développeur commun).
 - Les extensions qui utilisent des fonctions propres à Android (réglages internes, ressources) peuvent
   ne pas fonctionner entièrement.
 - Le DNS over HTTPS s'applique aux extensions, pas au lecteur mpv.

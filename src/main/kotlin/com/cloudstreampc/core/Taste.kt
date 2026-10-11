@@ -68,10 +68,23 @@ object Taste {
         return data
     }
 
+    /** Called after every change (sync folder). */
+    @Volatile
+    var onChanged: (() -> Unit)? = null
+
     @Synchronized
     private fun update(block: (TasteData) -> TasteData) {
         current()
         data = block(data)
+        runCatching { writeJsonFile(file(loadedProfile ?: "default"), data) }
+        runCatching { onChanged?.invoke() }
+    }
+
+    /** Data merged from the sync folder (does not notify the sync again). */
+    @Synchronized
+    fun replace(merged: TasteData) {
+        current()
+        data = merged
         runCatching { writeJsonFile(file(loadedProfile ?: "default"), data) }
     }
 

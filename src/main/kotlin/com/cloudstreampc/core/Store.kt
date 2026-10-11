@@ -47,6 +47,20 @@ data class IptvAccount(
     val enabled: Boolean = true,
 )
 
+/**
+ * A tracking account (AniList, MyAnimeList, Simkl, Trakt). The client id/secret belong to the API
+ * client the user registered on the service, the tokens to their account.
+ */
+data class TrackerAccount(
+    val clientId: String = "",
+    val clientSecret: String = "",
+    val accessToken: String? = null,
+    val refreshToken: String? = null,
+    /** Epoch ms; 0 when unknown. */
+    val expiresAt: Long = 0,
+    val userName: String? = null,
+)
+
 /** A Stremio addon, identified by its manifest URL. */
 data class StremioAddonEntry(
     val manifestUrl: String = "",
@@ -136,6 +150,10 @@ data class Settings(
     val appPin: String? = null,
     val iptvAccounts: List<IptvAccount> = emptyList(),
     val stremioAddons: List<StremioAddonEntry> = emptyList(),
+    /** Tracking accounts by service id ("anilist", "mal", "simkl", "trakt"). */
+    val trackers: Map<String, TrackerAccount> = emptyMap(),
+    /** Folder shared between computers (OneDrive, Google Drive…) to sync libraries; null disables it. */
+    val syncDir: String? = null,
 )
 
 /** Playback position of a movie or episode, in seconds. */
@@ -181,6 +199,13 @@ data class UserLibrary(
     val episodeSnapshots: Map<String, EpisodeSnapshot> = emptyMap(),
     /** Series with episodes released since the user last looked. */
     val newEpisodes: List<NewEpisode> = emptyList(),
+    /** When each favorite was added / removed ("apiName|url" -> epoch ms), to merge libraries between PCs. */
+    val favoriteAdded: Map<String, Long> = emptyMap(),
+    val favoriteRemoved: Map<String, Long> = emptyMap(),
+    /** History entries removed by hand, so a synced PC doesn't bring them back. */
+    val historyRemoved: Map<String, Long> = emptyMap(),
+    /** Last change of this library, for the sync folder. */
+    val modifiedAt: Long = 0,
 )
 
 data class EpisodeSnapshot(
@@ -245,7 +270,17 @@ object Store {
 
     @Synchronized
     fun updateLibrary(block: (UserLibrary) -> UserLibrary) {
-        library = block(library)
+        val updated = block(library)
+        if (updated === library) return
+        library = updated.copy(modifiedAt = System.currentTimeMillis())
+        writeJsonFile(AppDirs.libraryFile(settings.currentProfile), library)
+        runCatching { onLibraryChanged?.invoke() }
+    }
+
+    /** Replaces the library with one merged from the sync folder (does not notify the sync again). */
+    @Synchronized
+    fun replaceLibrary(merged: UserLibrary) {
+        library = merged
         writeJsonFile(AppDirs.libraryFile(settings.currentProfile), library)
     }
 
@@ -253,10 +288,15 @@ object Store {
         library.favorites.any { it.apiName == apiName && it.url == url }
 
     fun toggleFavorite(item: SavedItem) = updateLibrary { lib ->
+        val key = "${item.apiName}|${item.url}"
+        val now = System.currentTimeMillis()
         if (lib.favorites.any { it.apiName == item.apiName && it.url == item.url }) {
-            lib.copy(favorites = lib.favorites.filterNot { it.apiName == item.apiName && it.url == item.url })
+            lib.copy(
+                favorites = lib.favorites.filterNot { it.apiName == item.apiName && it.url == item.url },
+                favoriteRemoved = lib.favoriteRemoved + (key to now),
+            )
         } else {
-            lib.copy(favorites = listOf(item) + lib.favorites)
+            lib.copy(favorites = listOf(item) + lib.favorites, favoriteAdded = lib.favoriteAdded + (key to now))
         }
     }
 
@@ -298,8 +338,18 @@ object Store {
     }
 
     fun removeHistory(entry: HistoryEntry) = updateLibrary { lib ->
-        lib.copy(history = lib.history - entry)
+        lib.copy(
+            history = lib.history - entry,
+            historyRemoved = lib.historyRemoved + ("${entry.item.apiName}|${entry.item.url}" to System.currentTimeMillis()),
+        )
     }
 
-    fun clearHistory() = updateLibrary { it.copy(history = emptyList()) }
+    fun clearHistory() = updateLibrary { lib ->
+        val now = System.currentTimeMillis()
+        lib.copy(history = emptyList(), historyRemoved = lib.historyRemoved + lib.history.associate { "${it.item.apiName}|${it.item.url}" to now })
+    }
+
+    /** Called after every library change (sync folder). */
+    @Volatile
+    var onLibraryChanged: (() -> Unit)? = null
 }

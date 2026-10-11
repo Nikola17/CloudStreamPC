@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "2.2.0"
+const val APP_VERSION = "2.3.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
@@ -125,6 +125,7 @@ fun SettingsPageScreen(page: SettingsPage) {
                     SettingsPage.Accounts -> AccountSettings()
                     SettingsPage.Iptv -> IptvSettings()
                     SettingsPage.Profiles -> ProfileSettings()
+                    SettingsPage.Tracking -> TrackingSettings()
                     SettingsPage.Extensions -> Unit
                 }
             }

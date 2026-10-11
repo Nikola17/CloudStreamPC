@@ -31,6 +31,7 @@ enum class SettingsPage(val title: String) {
     Extensions("Extensions"),
     Iptv("Comptes IPTV"),
     Profiles("Profils"),
+    Tracking("Suivi et synchronisation"),
 }
 
 sealed interface Route {

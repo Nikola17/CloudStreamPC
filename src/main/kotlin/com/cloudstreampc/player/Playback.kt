@@ -96,7 +96,12 @@ object PlaybackManager {
         fun save() {
             val pos = position ?: return
             val dur = duration?.takeIf { it > 0 } ?: return
+            val wasWatched = Store.isWatched(request.api.name, request.playable.data)
             Store.saveProgress(request.api.name, request.playable.data, pos, dur)
+            // Past 90 %: tell AniList, MyAnimeList, Simkl or Trakt.
+            if (!wasWatched && Store.isWatched(request.api.name, request.playable.data)) {
+                com.cloudstreampc.sync.Trackers.watched(request.response, request.playable)
+            }
         }
     }
 
@@ -202,7 +207,10 @@ object PlaybackManager {
         val position = session.position
         val duration = session.duration
         if (position != null && duration != null && duration > 0 && position / duration >= 0.7) {
-            Store.setWatched(current.api.name, current.playable.data, true)
+            if (!Store.isWatched(current.api.name, current.playable.data)) {
+                Store.setWatched(current.api.name, current.playable.data, true)
+                com.cloudstreampc.sync.Trackers.watched(current.response, current.playable)
+            }
         } else {
             session.save()
         }

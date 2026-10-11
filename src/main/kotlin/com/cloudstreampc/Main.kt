@@ -60,6 +60,7 @@ fun main() {
             runCatching { PluginManager.updateAll() }.onFailure { Logger.error("Mise à jour des extensions", it) }
         }
         com.cloudstreampc.core.EpisodeWatcher.start()
+        com.cloudstreampc.sync.FolderSync.start()
         Backup.autoBackupIfDue()
         if (Store.settings.recommendationsEnabled) com.cloudstreampc.providers.TasteEnricher.enrichSoon()
     }

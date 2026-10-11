@@ -19,7 +19,6 @@ import java.util.concurrent.TimeUnit
  * lists for the same title; yt-dlp turns it into a stream mpv can play.
  */
 object Trailers {
-    internal var cinemetaBase = "https://v3-cinemeta.strem.io"
     private val isWindows = System.getProperty("os.name").lowercase().contains("win")
 
     private val cacheFile: File get() = File(AppDirs.cache, "trailers.json")
@@ -36,6 +35,7 @@ object Trailers {
     internal fun clearCache() {
         synchronized(ids) { ids.clear() }
         cacheFile.delete()
+        Cinemeta.clearCache()
     }
 
     /** YouTube id of the trailer, or null when none is known. */
@@ -58,19 +58,7 @@ object Trailers {
     }
 
     private suspend fun searchCinemeta(response: LoadResponse): String? {
-        val type = if (Recommender.family(response.type.name) == "movie") "movie" else "series"
-        val name = response.name.replace(Regex("""\s*[\[(](VF|VOSTFR|FRENCH|MULTI)[])]""", RegexOption.IGNORE_CASE), "").trim()
-        val search = mapper.readTree(app.get("$cinemetaBase/catalog/$type/top/search=${URLEncoder.encode(name, Charsets.UTF_8)}.json", timeout = 15).text)
-        val wanted = Recommender.normalizedTitle(name)
-        val year = response.year
-        val metas = search.path("metas").toList()
-        fun yearOf(node: com.fasterxml.jackson.databind.JsonNode) = node.path("releaseInfo").asText().take(4).toIntOrNull()
-        val sameTitle = metas.filter { Recommender.normalizedTitle(it.path("name").asText()) == wanted }
-        val meta = sameTitle.firstOrNull { year == null || yearOf(it) == null || yearOf(it) == year }
-            ?: metas.singleOrNull { year != null && yearOf(it) == year }
-            ?: return null
-        val id = meta.path("id").asText().takeIf { it.isNotBlank() } ?: return null
-        val details = mapper.readTree(app.get("$cinemetaBase/meta/$type/$id.json", timeout = 15).text).path("meta")
+        val details = Cinemeta.meta(response) ?: return null
         return details.path("trailerStreams").firstNotNullOfOrNull { it.path("ytId").asText().takeIf { s -> s.length == 11 } }
             ?: details.path("trailers").firstNotNullOfOrNull { it.path("source").asText().takeIf { s -> s.length == 11 } }
     }

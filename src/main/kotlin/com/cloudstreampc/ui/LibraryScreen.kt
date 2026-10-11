@@ -1,5 +1,11 @@
 package com.cloudstreampc.ui
 
+import androidx.compose.ui.unit.sp
+
+import androidx.compose.runtime.remember
+
+import androidx.compose.runtime.LaunchedEffect
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +60,9 @@ fun LibraryScreen() {
             }
             FilterChip(section == 0, { section = 0 }, { Text("Favoris (${library.favorites.size})") })
             FilterChip(section == 1, { section = 1 }, { Text("Historique (${library.history.size})") })
+            if (com.cloudstreampc.sync.Trackers.connected().isNotEmpty()) {
+                FilterChip(section == 3, { section = 3 }, { Text("Listes de suivi") })
+            }
         }
 
         val grid: @Composable (content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit) -> Unit = { content ->
@@ -67,7 +76,9 @@ fun LibraryScreen() {
             )
         }
 
-        if (section == 2) {
+        if (section == 3) {
+            TrackerLists()
+        } else if (section == 2) {
             grid {
                 items(library.newEpisodes, key = { "new:" + it.item.apiName + it.item.url }) { release ->
                     PosterCard(
@@ -105,6 +116,51 @@ fun LibraryScreen() {
                             colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = CsColors.Background.copy(alpha = 0.7f)),
                         ) { Icon(Icons.Default.Close, "Retirer") }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** "En cours" and "À voir" lists of the connected AniList, MyAnimeList, Simkl and Trakt accounts. */
+@Composable
+private fun TrackerLists() {
+    val nav = LocalNavigator.current
+    var lists by remember { mutableStateOf<List<Pair<String, Result<List<com.cloudstreampc.sync.TrackedTitle>>>>?>(null) }
+    LaunchedEffect(Unit) {
+        lists = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.cloudstreampc.sync.Trackers.connected().map { tracker ->
+                tracker.name to runCatching { tracker.list(com.cloudstreampc.sync.Trackers.account(tracker)!!) }
+            }
+        }
+    }
+    val loaded = lists
+    if (loaded == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
+        return
+    }
+    LazyVerticalGrid(
+        GridCells.Adaptive(140.dp),
+        contentPadding = PaddingValues(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        loaded.forEach { (name, result) ->
+            item(key = "header:$name", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Text(name, style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+                    result.exceptionOrNull()?.let { Text(it.message ?: "Erreur", color = CsColors.Error, fontSize = 13.sp) }
+                    if (result.getOrNull()?.isEmpty() == true) Text("Liste vide", color = CsColors.TextMuted, fontSize = 13.sp)
+                }
+            }
+            val titles = result.getOrDefault(emptyList())
+            items(titles.size, key = { "$name:$it" }) { index ->
+                val title = titles[index]
+                PosterCard(title.title, title.posterUrl, subtitle = title.detail) {
+                    SearchState.query = com.cloudstreampc.providers.Cinemeta.cleanTitle(title.title)
+                    SearchState.pendingSearch = true
+                    nav.select(Tab.Search)
                 }
             }
         }

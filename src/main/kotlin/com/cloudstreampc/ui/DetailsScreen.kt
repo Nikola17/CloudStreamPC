@@ -359,7 +359,10 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                     progress = Store.progressOf(data.apiName, ep.data)?.fraction,
                     current = lastWatched?.episodeData == ep.data,
                     downloaded = DownloadManager.find(data.apiName, ep.data) != null,
-                    onToggleWatched = { Store.setWatched(data.apiName, ep.data, !watched) },
+                    onToggleWatched = {
+                        Store.setWatched(data.apiName, ep.data, !watched)
+                        if (!watched) com.cloudstreampc.sync.Trackers.watched(data, queue[index])
+                    },
                     onDownload = { download(index) },
                 ) { play(index) }
             }
