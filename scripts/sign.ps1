@@ -21,6 +21,8 @@ function Find-SignTool {
 }
 
 $Files = $Files | ForEach-Object { (Resolve-Path $_).Path }
+# jpackage leaves the launcher read-only, which signtool cannot rewrite.
+foreach ($file in $Files) { Set-ItemProperty -Path $file -Name IsReadOnly -Value $false }
 
 if ($env:AZURE_KEY_VAULT_URI -and $env:AZURE_CERT_NAME) {
     Write-Host "Signature avec Azure Key Vault ($env:AZURE_CERT_NAME)"
