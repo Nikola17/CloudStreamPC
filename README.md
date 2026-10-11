@@ -5,6 +5,8 @@ l'application [CloudStream](https://github.com/recloudstream/cloudstream) (versi
 **les mêmes extensions (`.cs3`)**, plus les **comptes IPTV** (Xtream Codes / M3U) et les
 **addons Stremio**.
 
+![Accueil de CloudStreamPC](docs/screenshots/home.jpg)
+
 ## Installation (Windows 10/11, 64 bits)
 
 1. Ouvrez la page [Releases](../../releases/latest).
@@ -16,6 +18,17 @@ l'application [CloudStream](https://github.com/recloudstream/cloudstream) (versi
 Java et le lecteur vidéo [mpv](https://mpv.io) sont inclus : rien d'autre à installer.
 Au premier lancement, un assistant propose d'installer les extensions CloudStream FR, d'ajouter un
 compte IPTV et le catalogue Stremio.
+
+## Captures d'écran
+
+| | |
+|---|---|
+| ![Recommandations](docs/screenshots/recos.jpg) | ![Top 10](docs/screenshots/top10.jpg) |
+| **Recommandations** calculées à partir de ce que vous regardez | **Top 10** et rangées par catégorie |
+| ![Fiche d'une série](docs/screenshots/details.jpg) | ![Recherche](docs/screenshots/search.jpg) |
+| **Fiche d'une série** : saisons, épisodes, téléchargement | **Recherche** dans toutes les extensions |
+| ![Paramètres](docs/screenshots/settings.jpg) | ![Extensions](docs/screenshots/extensions.jpg) |
+| **Paramètres** organisés comme l'application Android | **Extensions** CloudStream et addons Stremio |
 
 ## Fonctionnalités
 
