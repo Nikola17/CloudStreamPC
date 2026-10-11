@@ -10,6 +10,9 @@ val mapper = jacksonObjectMapper()
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .configure(SerializationFeature.INDENT_OUTPUT, true)
 
+/** Single-line JSON, for protocols that read line by line (mpv IPC). */
+fun compactJson(value: Any?): String = mapper.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(value)
+
 inline fun <reified T> readJsonFile(file: File, default: () -> T): T =
     try {
         if (file.exists()) mapper.readValue<T>(file) else default()

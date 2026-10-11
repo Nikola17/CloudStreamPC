@@ -40,13 +40,12 @@ import com.cloudstreampc.core.Logger
 import com.cloudstreampc.core.Store
 import com.cloudstreampc.player.ExternalPlayer
 import com.cloudstreampc.player.PlayRequest
+import com.cloudstreampc.player.LinkResolver
 import com.cloudstreampc.player.PlaybackManager
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
@@ -77,14 +76,11 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
 
     LaunchedEffect(request) {
         try {
-            withContext(Dispatchers.IO) {
-                request.api.loadLinks(
-                    target.data,
-                    false,
-                    { sub -> if (subtitles.none { it.url == sub.url }) subtitles += sub },
-                    { link -> if (links.none { it.url == link.url }) links += link },
-                )
-            }
+            LinkResolver.load(
+                request,
+                { sub -> if (subtitles.none { it.url == sub.url }) subtitles += sub },
+                { link -> if (links.none { it.url == link.url }) links += link },
+            )
         } catch (t: Throwable) {
             Logger.error("loadLinks ${request.api.name}", t)
             error = t.message ?: t.toString()

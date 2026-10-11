@@ -1,5 +1,7 @@
 package com.cloudstreampc.ui
 
+import com.cloudstreampc.player.ExternalPlayer
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -176,6 +178,17 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     // Everything playable from this page, in order, so the next episode can follow.
     val queue: List<Playable> = PlayQueue.build(data, episodes)
 
+    var trailer by remember(data) { mutableStateOf<String?>(null) }
+    LaunchedEffect(data) { trailer = runCatching { com.cloudstreampc.providers.Trailers.youtubeId(data) }.getOrNull() }
+
+    // The user sees the episode list: remember its size and clear the "new episode" mark.
+    LaunchedEffect(data) {
+        withContext(Dispatchers.IO) {
+            if (episodesByDub.isNotEmpty()) com.cloudstreampc.core.EpisodeWatcher.record(saved, data)
+            com.cloudstreampc.core.EpisodeWatcher.seen(data.apiName, data.url)
+        }
+    }
+
     val scope = rememberCoroutineScope()
 
     /** Plays with the best source right away (setting), or [chooseSource] to pick it by hand. */
@@ -271,6 +284,16 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                         Spacer(Modifier.width(6.dp))
                                         Text(if (existing != null) "Téléchargé" else "Télécharger")
                                     }
+                                }
+                            }
+                            trailer?.let { id ->
+                                FilledTonalButton(onClick = {
+                                    runCatching { ExternalPlayer.playTrailer(com.cloudstreampc.providers.Trailers.youtubeUrl(id), "${data.name} · Bande-annonce") }
+                                        .onFailure { nav.toast(it.message ?: "Impossible de lancer le lecteur") }
+                                }) {
+                                    Icon(AppIcons.VideoLibrary, null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Bande-annonce")
                                 }
                             }
                             val favorite = Store.isFavorite(data.apiName, data.url)

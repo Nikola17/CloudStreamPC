@@ -49,6 +49,17 @@ object PluginManager {
     var revision by mutableIntStateOf(0)
         private set
 
+    /**
+     * Prefixes the Android app gives the library at startup: without them `addMalId` and the
+     * other sync ids overwrite each other in `syncData`.
+     */
+    fun configureLibrary() {
+        com.lagradost.cloudstream3.LoadResponse.malIdPrefix = "MAL"
+        com.lagradost.cloudstream3.LoadResponse.aniListIdPrefix = "AniList"
+        com.lagradost.cloudstream3.LoadResponse.kitsuIdPrefix = "Kitsu"
+        com.lagradost.cloudstream3.LoadResponse.simklIdPrefix = "Simkl"
+    }
+
     fun notifyProvidersChanged() {
         revision++
     }

@@ -28,6 +28,7 @@ import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.net.URLDecoder
@@ -47,6 +48,8 @@ internal data class IptvItem(
     val added: Long = 0,
     /** Direct stream URL (M3U) or container extension (Xtream movies). */
     val extra: String? = null,
+    /** Channel id in the XMLTV guide. */
+    val epgId: String? = null,
 ) {
     enum class Kind { LIVE, MOVIE, SERIES }
 }
@@ -69,6 +72,11 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     private var categories: List<Pair<IptvItem.Kind, String>> = emptyList()
     /** M3U series episodes, by series id. */
     private var m3uEpisodes: Map<String, List<M3uEpisode>> = emptyMap()
+    /** Guide address given in the M3U header (url-tvg / x-tvg-url). */
+    private var m3uGuideUrl: String? = null
+
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    val guide = EpgStore(account.id.ifBlank { Integer.toHexString(account.url.hashCode()) })
 
     private val server get() = mainUrl.substringBefore("/player_api.php").trimEnd('/')
     private val auth get() = "username=${enc(account.username)}&password=${enc(account.password)}"
@@ -124,6 +132,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             items += IptvItem(
                 IptvItem.Kind.LIVE, it.str("stream_id") ?: return@forEach, it.str("name") ?: return@forEach,
                 liveCats[it.str("category_id")] ?: "Autres", it.str("stream_icon"),
+                epgId = it.str("epg_channel_id")?.ifBlank { null },
             )
         }
         val vodCats = categoryNames("get_vod_categories")
@@ -161,6 +170,8 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         for (raw in text.lineSequence()) {
             val line = raw.trim()
             when {
+                line.startsWith("#EXTM3U") -> m3uGuideUrl =
+                    Regex("""(?:url-tvg|x-tvg-url)="([^"]+)"""").find(line)?.groupValues?.get(1)?.split(",")?.firstOrNull()?.trim()
                 line.startsWith("#EXTINF") -> info = line
                 line.isEmpty() || line.startsWith("#") -> Unit
                 info != null -> {
@@ -184,7 +195,10 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
                             }
                         }
                         isMovie -> items += IptvItem(IptvItem.Kind.MOVIE, id, name, group, logo, extra = line)
-                        else -> items += IptvItem(IptvItem.Kind.LIVE, id, name, group, logo, extra = line)
+                        else -> items += IptvItem(
+                            IptvItem.Kind.LIVE, id, name, group, logo, extra = line,
+                            epgId = attrs["tvg-id"]?.ifBlank { null },
+                        )
                     }
                     info = null
                 }
@@ -250,7 +264,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         return when (item.kind) {
             IptvItem.Kind.LIVE -> newLiveStreamLoadResponse(item.name, url, "live|${item.id}") {
                 posterUrl = item.poster
-                plot = epg(item)
+                plot = nowAndNext(item) ?: epg(item)
                 tags = listOf(item.category)
                 recommendations = similar(item)
             }
@@ -265,6 +279,49 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             .sortedWith(compareByDescending<IptvItem> { it.rating ?: 0.0 }.thenByDescending { it.added })
             .take(20)
             .map { it.toSearchResponse() }
+
+    // ----- Guide TV -----
+
+    /** A channel of the guide, with what is needed to open it. */
+    class GuideChannel(val name: String, val logo: String?, val category: String, val epgId: String?, val url: String)
+
+    val guideUrl: String?
+        get() = when (account.type) {
+            IptvType.XTREAM -> "$server/xmltv.php?$auth"
+            IptvType.M3U -> m3uGuideUrl
+        }
+
+    suspend fun channels(): List<GuideChannel> = catalogOrLoad().filter { it.kind == IptvItem.Kind.LIVE }.map {
+        GuideChannel(it.name, it.poster, it.category, it.epgId, it.toSearchResponse().url)
+    }
+
+    /** Downloads the XMLTV guide of the account's channels (cached for 12 hours). */
+    suspend fun loadGuide(): Map<String, List<Programme>> {
+        val ids = catalogOrLoad().mapNotNull { it.epgId?.lowercase() }.toSet()
+        return guide.ensure(guideUrl, ids)
+    }
+
+    private suspend fun nowAndNext(item: IptvItem): String? {
+        if (item.epgId == null) return null
+        // The first download can be large: don't hold the channel page for it.
+        if (!guide.isLoaded) {
+            backgroundScope.launch { runCatching { loadGuide() } }
+            return null
+        }
+        val now = System.currentTimeMillis()
+        val current = guide.current(item.epgId, now)
+        val next = guide.next(item.epgId, now)
+        if (current == null && next == null) return null
+        val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        fun at(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).format(time)
+        return buildString {
+            current?.let {
+                append("En ce moment : ${it.title} (${at(it.start)} – ${at(it.stop)})")
+                it.description?.let { d -> append("\n").append(d.take(300)) }
+            }
+            next?.let { if (isNotEmpty()) append("\n\n"); append("Ensuite : ${it.title} à ${at(it.start)}") }
+        }
+    }
 
     private suspend fun epg(item: IptvItem): String? {
         if (account.type != IptvType.XTREAM) return null

@@ -17,7 +17,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.Notification
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.isTraySupported
+import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.cloudstreampc.core.Backup
 import com.cloudstreampc.core.Logger
@@ -43,6 +47,7 @@ private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 fun main() {
     Logger.install()
     Network.apply(Store.settings.dns)
+    com.cloudstreampc.plugins.PluginManager.configureLibrary()
 
     if (!Store.settings.firstLaunchDone && Store.settings.repositories.isEmpty()) {
         Store.updateSettings { it.copy(repositories = listOf(defaultRepository)) }
@@ -54,6 +59,7 @@ fun main() {
         if (Store.settings.autoUpdatePlugins) {
             runCatching { PluginManager.updateAll() }.onFailure { Logger.error("Mise à jour des extensions", it) }
         }
+        com.cloudstreampc.core.EpisodeWatcher.start()
         Backup.autoBackupIfDue()
         if (Store.settings.recommendationsEnabled) com.cloudstreampc.providers.TasteEnricher.enrichSoon()
     }
@@ -62,6 +68,32 @@ fun main() {
         val state = rememberWindowState(width = 1360.dp, height = 860.dp, placement = WindowPlacement.Maximized)
         val nav = rememberNavigator()
         var confirmExit by remember { mutableStateOf(false) }
+
+        // Desktop notifications for new episodes, through the system tray.
+        val trayState = rememberTrayState()
+        DisposableEffect(Unit) {
+            com.cloudstreampc.core.EpisodeWatcher.onNewEpisode = { release ->
+                trayState.sendNotification(
+                    Notification("Nouvel épisode disponible", "${release.item.name} · ${release.label}", Notification.Type.Info),
+                )
+            }
+            onDispose { com.cloudstreampc.core.EpisodeWatcher.onNewEpisode = null }
+        }
+        if (Store.settings.newEpisodeNotifications && isTraySupported) {
+            Tray(
+                icon = painterResource("icon.png"),
+                state = trayState,
+                tooltip = "CloudStreamPC",
+                onAction = {
+                    state.isMinimized = false
+                    nav.select(com.cloudstreampc.ui.Tab.Library)
+                },
+                menu = {
+                    Item("Ouvrir CloudStreamPC", onClick = { state.isMinimized = false })
+                    Item("Quitter", onClick = ::exitApplication)
+                },
+            )
+        }
         Window(
             onCloseRequest = { if (Store.settings.confirmExit) confirmExit = true else exitApplication() },
             state = state,

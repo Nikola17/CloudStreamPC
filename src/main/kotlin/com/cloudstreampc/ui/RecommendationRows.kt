@@ -58,3 +58,21 @@ private fun RecRow(title: String, items: List<RecItem>) {
         }
     }
 }
+
+/** Followed series with episodes released since the user last opened them. */
+@Composable
+fun NewEpisodesRow() {
+    val releases = Store.library.newEpisodes
+    if (releases.isEmpty()) return
+    val nav = LocalNavigator.current
+    MediaRow("Nouveaux épisodes") {
+        items(releases, key = { "new:" + it.item.apiName + it.item.url }) { release ->
+            PosterCard(
+                release.item.name,
+                release.item.posterUrl,
+                badge = release.label.ifBlank { "NOUVEAU" },
+                onDismiss = { com.cloudstreampc.core.EpisodeWatcher.seen(release.item.apiName, release.item.url) },
+            ) { nav.open(release.item) }
+        }
+    }
+}

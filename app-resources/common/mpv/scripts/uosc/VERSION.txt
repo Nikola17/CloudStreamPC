@@ -1,0 +1,1 @@
+uosc 5.9.2 (https://github.com/tomasklaen/uosc), LGPL-2.1, fichiers non modifiés.

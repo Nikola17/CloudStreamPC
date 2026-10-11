@@ -78,6 +78,12 @@ data class Settings(
     val subtitleLanguages: String = "fr,fre,fra,french",
     val audioLanguages: String = "fr,fre,fra,french",
     val subtitleSize: Int = 55,
+    /** Modern controls (uosc) and the "Passer l'intro" / "Épisode suivant" buttons in the bundled mpv. */
+    val playerInterface: Boolean = true,
+    val skipIntroButton: Boolean = true,
+    val autoSkipIntro: Boolean = false,
+    /** "+85 s" button in the player controls, like CloudStream. */
+    val skip85Button: Boolean = true,
 
     // Fournisseurs
     /** Languages of the extensions to show; empty shows all. */
@@ -103,12 +109,17 @@ data class Settings(
     val searchHistoryEnabled: Boolean = true,
     /** "Recommandé pour vous" rows, computed from what is watched on this computer. */
     val recommendationsEnabled: Boolean = true,
+    /** Muted trailer behind the home banner. */
+    val heroTrailers: Boolean = true,
 
     // Général
     /** DNS over HTTPS provider id (see `Network`), "none" uses the system DNS. */
     val dns: String = "none",
     val downloadDir: String? = null,
     val parallelDownloads: Int = 2,
+    /** Looks for new episodes of followed series. */
+    val checkNewEpisodes: Boolean = true,
+    val newEpisodeNotifications: Boolean = true,
 
     // Sauvegarde
     /** Days between automatic backups, 0 disables them. */
@@ -166,6 +177,24 @@ data class UserLibrary(
     /** Resume positions, keyed like [watched]. */
     val progress: Map<String, WatchProgress> = emptyMap(),
     val searchHistory: List<String> = emptyList(),
+    /** Episode count last seen for each followed series, keyed by "apiName|url". */
+    val episodeSnapshots: Map<String, EpisodeSnapshot> = emptyMap(),
+    /** Series with episodes released since the user last looked. */
+    val newEpisodes: List<NewEpisode> = emptyList(),
+)
+
+data class EpisodeSnapshot(
+    val count: Int = 0,
+    val lastLabel: String? = null,
+    val checkedAt: Long = 0,
+)
+
+data class NewEpisode(
+    val item: SavedItem = SavedItem(),
+    /** e.g. "S2·E5". */
+    val label: String = "",
+    val added: Int = 1,
+    val foundAt: Long = 0,
 )
 
 private const val SETTINGS_VERSION = 2

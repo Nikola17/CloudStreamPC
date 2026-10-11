@@ -1,5 +1,11 @@
 package com.cloudstreampc.ui
 
+import androidx.compose.ui.draw.alpha
+
+import com.cloudstreampc.player.PlaybackManager
+
+import com.cloudstreampc.providers.Trailers
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -277,11 +283,30 @@ fun HeroCarousel(api: MainAPI, items: List<SearchResponse>, height: Dp) {
     LaunchedEffect(item.url) {
         if (details == null) details = runCatching { DetailsCache.load(api, item.url) }.getOrNull()
     }
+    // Trailer without sound after a few seconds on the same title, like the streaming platforms.
+    var trailerUrl by remember(item.url) { mutableStateOf<String?>(null) }
+    val trailerAlpha = remember(item.url) { Animatable(0f) }
+    val focused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    val allowTrailer = Store.settings.heroTrailers && focused && PlaybackManager.nowPlaying == null
+    LaunchedEffect(item.url, details, allowTrailer) {
+        val loaded = details
+        if (!allowTrailer) {
+            trailerUrl = null
+            return@LaunchedEffect
+        }
+        if (loaded == null || trailerUrl != null) return@LaunchedEffect
+        delay(4_000)
+        val id = runCatching { Trailers.youtubeId(loaded) }.getOrNull() ?: return@LaunchedEffect
+        trailerUrl = Trailers.silentStream(id)
+    }
+    val trailerPlaying = trailerUrl != null
+
     // Slow zoom on the backdrop, and a progress bar on the current indicator.
     val zoom = remember(item.url) { Animatable(1f) }
     val progress = remember(item.url) { Animatable(0f) }
-    LaunchedEffect(item.url, hovered) {
-        if (hovered) return@LaunchedEffect
+    LaunchedEffect(item.url, hovered, trailerPlaying) {
+        // The trailer plays to its end before the next title.
+        if (hovered || trailerPlaying) return@LaunchedEffect
         launch { zoom.animateTo(1.08f, tween(14_000, easing = LinearEasing)) }
         progress.animateTo(1f, tween(((1f - progress.value) * 10_000).toInt(), easing = LinearEasing))
         delay(200)
@@ -294,6 +319,22 @@ fun HeroCarousel(api: MainAPI, items: List<SearchResponse>, height: Dp) {
         Crossfade(response?.backgroundPosterUrl ?: response?.posterUrl ?: item.posterUrl, animationSpec = tween(700)) { image ->
             RemoteImage(image, Modifier.fillMaxSize().scale(zoom.value), item.posterHeaders, alignment = Alignment.TopCenter,
                 placeholder = { Box(Modifier.fillMaxSize().background(CsColors.Surface)) })
+        }
+        trailerUrl?.let { url ->
+            val scope = rememberCoroutineScope()
+            SilentVideo(
+                url, Modifier.fillMaxSize().alpha(trailerAlpha.value),
+                onFirstFrame = { scope.launch { trailerAlpha.animateTo(1f, tween(900)) } },
+                onEnded = {
+                    scope.launch {
+                        // Played to the end: next title. Failed to start: back to the picture.
+                        val played = trailerAlpha.value > 0f
+                        trailerAlpha.animateTo(0f, tween(600))
+                        trailerUrl = null
+                        if (played) index = (index + 1) % items.size
+                    }
+                },
+            )
         }
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background.copy(alpha = 0.92f), 0.45f to background.copy(alpha = 0.35f), 0.75f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.5f), 0.18f to Color.Transparent, 0.62f to Color.Transparent, 1f to background)))
@@ -443,8 +484,14 @@ enum class HomeTab(val label: String, val types: Set<TvType>?) {
 }
 
 @Composable
-fun HomeTabs(available: List<HomeTab>, selected: HomeTab, modifier: Modifier = Modifier, onSelect: (HomeTab) -> Unit) {
-    if (available.size < 2) return
+fun HomeTabs(
+    available: List<HomeTab>,
+    selected: HomeTab,
+    modifier: Modifier = Modifier,
+    onGuide: (() -> Unit)? = null,
+    onSelect: (HomeTab) -> Unit,
+) {
+    if (available.size < 2 && onGuide == null) return
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
         available.forEach { tab ->
             val interaction = remember { MutableInteractionSource() }
@@ -465,6 +512,21 @@ fun HomeTabs(available: List<HomeTab>, selected: HomeTab, modifier: Modifier = M
                 )
                 Spacer(Modifier.height(5.dp))
                 Box(Modifier.width(22.dp).height(2.dp).background(if (tab == selected) CsColors.Primary else Color.Transparent))
+            }
+        }
+        if (onGuide != null) {
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            Row(
+                Modifier.padding(bottom = 7.dp).clip(RoundedCornerShape(50)).hoverable(interaction)
+                    .background(Color.White.copy(alpha = if (hovered) 0.22f else 0.12f))
+                    .clickable(interaction, indication = null, onClick = onGuide)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(AppIcons.Tv, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Guide TV", style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp), fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
     }

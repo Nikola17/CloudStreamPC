@@ -82,6 +82,7 @@ fun App(nav: Navigator) {
                                     is Route.Details -> DetailsScreen(route)
                                     is Route.Category -> CategoryScreen(route)
                                     is Route.Settings -> SettingsPageScreen(route.page)
+                                    Route.TvGuide -> TvGuideScreen()
                                 }
                             }
                         }
@@ -137,6 +138,15 @@ private fun Sidebar(nav: Navigator) {
                         tint = if (selected) CsColors.Primary else Color.White,
                         modifier = Modifier.size(30.dp),
                     )
+                    // New episodes of followed series.
+                    val count = if (tab == Tab.Library) com.cloudstreampc.core.Store.library.newEpisodes.size else 0
+                    if (count > 0) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp).size(20.dp)
+                                .clip(CircleShape).background(CsColors.Error),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(if (count > 9) "9+" else "$count", fontSize = 11.sp, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+                    }
                 }
             }
         }

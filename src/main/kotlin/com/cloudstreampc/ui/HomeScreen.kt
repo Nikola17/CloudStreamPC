@@ -172,6 +172,9 @@ fun HomeScreen() {
         return known.isNotEmpty() && known.count { it in types } * 2 >= known.size
     }
     val tabs = HomeTab.entries.filter { tab -> tab.types == null || ordered.any { matches(it.second, tab) } }
+    val guide: (() -> Unit)? = if (PluginManager.providers.any { it is com.cloudstreampc.providers.IptvProvider }) {
+        { nav.push(Route.TvGuide) }
+    } else null
     val tab = HomeState.tab.takeIf { it in tabs } ?: HomeTab.All
     val visible = ordered.filter { matches(it.second, tab) }
 
@@ -195,13 +198,14 @@ fun HomeScreen() {
                     if (Store.settings.showHero && featured.isNotEmpty()) {
                         Box {
                             HeroCarousel(selected, featured, heroHeight)
-                            HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp)) { HomeState.tab = it }
+                            HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp), onGuide = guide) { HomeState.tab = it }
                         }
                     } else {
-                        HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp, bottom = 24.dp)) { HomeState.tab = it }
+                        HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp, bottom = 24.dp), onGuide = guide) { HomeState.tab = it }
                     }
                 }
                 if (tab == HomeTab.All) {
+                    item(key = "new-episodes") { NewEpisodesRow() }
                     item(key = "continue") { ContinueWatchingRow(continueWatching) }
                     item(key = "recommendations") { RecommendationRows() }
                 }

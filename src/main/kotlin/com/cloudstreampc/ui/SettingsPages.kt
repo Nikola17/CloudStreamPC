@@ -71,6 +71,16 @@ fun GeneralSettings() {
         DownloadManager.applyParallelSetting()
     }
 
+    SettingsCategory("Nouveaux épisodes")
+    SettingsSwitch(
+        "Rechercher les nouveaux épisodes",
+        "Séries en favoris et séries regardées récemment, au démarrage puis toutes les 6 heures",
+        s.checkNewEpisodes,
+    ) { v -> Store.updateSettings { it.copy(checkNewEpisodes = v) } }
+    SettingsSwitch("Notifications Windows", "Prévient quand un nouvel épisode est disponible", s.newEpisodeNotifications) { v ->
+        Store.updateSettings { it.copy(newEpisodeNotifications = v) }
+    }
+
     SettingsCategory("Contournement FAI")
     SettingsChoice("DNS over HTTPS", Network.providers.map { it.id to it.label }, s.dns) { v ->
         Store.updateSettings { it.copy(dns = v) }
@@ -127,6 +137,22 @@ fun PlayerSettings() {
         listOf(0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0).map { it to "${it}x".replace(".0x", "x") },
         s.playbackSpeed,
     ) { v -> Store.updateSettings { it.copy(playbackSpeed = v) } }
+
+    SettingsCategory("Interface du lecteur (mpv)")
+    SettingsSwitch(
+        "Interface moderne",
+        "Barre de contrôle, menus des sous-titres et de l'audio, boutons « Passer l'intro » et « Épisode suivant »",
+        s.playerInterface,
+    ) { v -> Store.updateSettings { it.copy(playerInterface = v) } }
+    SettingsSwitch(
+        "Bouton « Passer l'intro »",
+        "Animés (base AniSkip) et vidéos dont les chapitres indiquent l'intro ou le générique",
+        s.skipIntroButton,
+    ) { v -> Store.updateSettings { it.copy(skipIntroButton = v) } }
+    SettingsSwitch("Passer l'intro automatiquement", null, s.autoSkipIntro) { v -> Store.updateSettings { it.copy(autoSkipIntro = v) } }
+    SettingsSwitch("Bouton « +85 s »", "Pour sauter un générique d'ouverture quand il n'est pas connu", s.skip85Button) { v ->
+        Store.updateSettings { it.copy(skip85Button = v) }
+    }
 
     SettingsCategory("Sous-titres et audio")
     SettingsChoice("Taille des sous-titres", listOf(42 to "Petite", 55 to "Normale", 68 to "Grande", 82 to "Très grande"), s.subtitleSize) { v ->
@@ -241,6 +267,9 @@ fun LayoutSettings() {
 
     SettingsCategory("Fonctionnalités")
     SettingsSwitch("Bannière en haut de l'accueil", null, s.showHero) { v -> Store.updateSettings { it.copy(showHero = v) } }
+    SettingsSwitch("Bandes-annonces dans la bannière", "Lecture sans le son après quelques secondes", s.heroTrailers) { v ->
+        Store.updateSettings { it.copy(heroTrailers = v) }
+    }
     SettingsSwitch("Afficher la distribution", "Sur la fiche des films et séries", s.showCast) { v -> Store.updateSettings { it.copy(showCast = v) } }
     SettingsSwitch("Bouton aléatoire", "Ouvre un titre au hasard depuis l'accueil", s.randomButton) { v -> Store.updateSettings { it.copy(randomButton = v) } }
     SettingsSwitch("Afficher l'horloge", null, s.showClock) { v -> Store.updateSettings { it.copy(showClock = v) } }

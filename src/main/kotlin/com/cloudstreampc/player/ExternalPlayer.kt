@@ -28,6 +28,7 @@ object ExternalPlayer {
      * Starts the player.
      * @param startAt position to resume from, in seconds
      * @param ipcPath mpv IPC server path, used to follow the playback position
+     * @param hasNext an episode follows: the player offers it at the end
      */
     fun play(
         link: ExtractorLink,
@@ -35,6 +36,7 @@ object ExternalPlayer {
         subtitles: List<SubtitleFile>,
         startAt: Double? = null,
         ipcPath: String? = null,
+        hasNext: Boolean = false,
     ): Process {
         val settings = Store.settings
         val kind = settings.player
@@ -51,6 +53,7 @@ object ExternalPlayer {
                 if (settings.fullscreen) command += "--fs"
                 if (startAt != null) command += "--start=+${startAt.toInt()}"
                 if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
+                command += interfaceArgs(hasNext)
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
                 command += "--sub-font-size=${settings.subtitleSize}"
@@ -81,6 +84,76 @@ object ExternalPlayer {
             .start()
     }
 
+    /** Folder of the mpv scripts shipped with the app (uosc and our buttons). */
+    fun scriptsDir(): File? =
+        System.getProperty("compose.application.resources.dir")?.let { File(it, "mpv") }
+            ?.takeIf { File(it, "scripts/cloudstreampc.lua").isFile }
+
+    /**
+     * Modern controls (uosc) plus our "Passer l'intro" / "Épisode suivant" buttons,
+     * when the player is mpv and the interface is enabled.
+     */
+    fun interfaceArgs(hasNext: Boolean): List<String> {
+        val settings = Store.settings
+        val dir = scriptsDir()
+        if (settings.player != PlayerKind.MPV || !settings.playerInterface || dir == null) return emptyList()
+        val controls = buildList {
+            add("menu")
+            add("gap")
+            add("<video,audio>subtitles")
+            add("<has_many_audio>audio")
+            add("<has_many_video>video")
+            add("<stream>stream-quality")
+            add("gap")
+            add("space")
+            add("<video,audio>speed")
+            add("space")
+            if (settings.skip85Button) add("command:fast_forward:seek 85?Avancer de 85 s")
+            if (hasNext) add("command:skip_next:script-message-to cloudstreampc next?Épisode suivant (N)")
+            add("gap")
+            add("fullscreen")
+        }.joinToString(",")
+        val accent = String.format("%06x", settings.primaryColor and 0xFFFFFF)
+        fun yesNo(value: Boolean) = if (value) "yes" else "no"
+        return listOf(
+            "--osc=no",
+            "--osd-bar=no",
+            // Our script decides what happens at the end: next episode or quit.
+            "--keep-open=yes",
+            "--script=${File(dir, "scripts/uosc").path}",
+            "--script=${File(dir, "scripts/cloudstreampc.lua").path}",
+            "--osd-fonts-dir=${File(dir, "fonts").path}",
+            "--script-opts-append=uosc-languages=fr,en",
+            "--script-opts-append=uosc-controls=$controls",
+            "--script-opts-append=uosc-color=foreground=$accent,foreground_text=ffffff",
+            "--script-opts-append=uosc-timeline_style=bar",
+            "--script-opts-append=cloudstreampc-has_next=${yesNo(hasNext)}",
+            "--script-opts-append=cloudstreampc-auto_next=${yesNo(settings.autoPlayNextEpisode)}",
+            "--script-opts-append=cloudstreampc-auto_skip=${yesNo(settings.autoSkipIntro)}",
+            "--script-opts-append=cloudstreampc-skip_button=${yesNo(settings.skipIntroButton)}",
+        )
+    }
+
+    /** Plays a YouTube trailer, with sound (mpv uses yt-dlp to read YouTube). */
+    fun playTrailer(youtubeUrl: String, title: String) {
+        val settings = Store.settings
+        val executable = findPlayer(settings.player, settings.playerPath) ?: throw PlayerNotFound(settings.player)
+        val command = mutableListOf(executable.absolutePath)
+        if (settings.player == PlayerKind.MPV) {
+            command += "--force-media-title=$title"
+            if (settings.fullscreen) command += "--fs"
+            command += interfaceArgs(hasNext = false)
+            com.cloudstreampc.providers.Trailers.ytDlp()?.let { command += "--script-opts-append=ytdl_hook-ytdl_path=$it" }
+            command += "--ytdl-format=bv*[height<=1080]+ba/b"
+            command += "--"
+        } else if (settings.player == PlayerKind.VLC && settings.fullscreen) {
+            command += "--fullscreen"
+        }
+        command += youtubeUrl
+        ProcessBuilder(command).redirectErrorStream(true)
+            .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()
+    }
+
     /** Plays a downloaded file (no headers needed). */
     fun playFile(file: File, title: String) {
         val settings = Store.settings
@@ -90,6 +163,7 @@ object ExternalPlayer {
             PlayerKind.MPV -> {
                 command += "--force-media-title=$title"
                 if (settings.fullscreen) command += "--fs"
+                command += interfaceArgs(hasNext = false)
                 command += "--"
             }
             PlayerKind.VLC -> if (settings.fullscreen) command += "--fullscreen"

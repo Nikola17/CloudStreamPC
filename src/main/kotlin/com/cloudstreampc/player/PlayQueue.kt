@@ -28,7 +28,9 @@ object PlayQueue {
     fun build(response: LoadResponse, episodes: List<Episode>): List<Playable> = when (response) {
         is MovieLoadResponse -> listOf(Playable(response.dataUrl, null, response.name))
         is LiveStreamLoadResponse -> listOf(Playable(response.dataUrl, null, response.name))
-        else -> episodes.mapIndexed { index, ep -> Playable(ep.data, episodeLabel(ep, index), response.name) }
+        else -> episodes.mapIndexed { index, ep ->
+            Playable(ep.data, episodeLabel(ep, index), response.name, ep.season, ep.episode ?: (index + 1))
+        }
     }
 
     /** Last episode launched, or the next one once it was watched; -1 when nothing is playable. */
