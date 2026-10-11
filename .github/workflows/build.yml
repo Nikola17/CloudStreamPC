@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      test_signing:
+        description: "Tester la signature avec un certificat jetable (pas de release)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -11,6 +16,15 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      # Code signing (optional): see "Signature" in the README.
+      WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,8 +68,23 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Get-ChildItem build/compose/binaries/main/msi/*.msi | Copy-Item -Destination "dist/CloudStreamPC-$v.msi"
           Get-ChildItem build/compose/binaries/main/exe/*.exe | Copy-Item -Destination "dist/CloudStreamPC-$v-setup.exe"
+
+      - name: Sign
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem dist/*.msi, dist/*.exe) + @(Get-Item build/compose/binaries/main/app/CloudStreamPC/CloudStreamPC.exe)
+          $test = "${{ inputs.test_signing }}" -eq "true"
+          ./scripts/sign.ps1 -Files ($files | ForEach-Object FullName) -TestCertificate:$test
+
+      - name: Portable zip and checksums
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
           Compress-Archive -Path build/compose/binaries/main/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v-portable.zip"
-          Get-ChildItem dist
+          Get-ChildItem dist -File | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -63,6 +92,7 @@ jobs:
           path: dist/*
 
       - name: Publish release
+        if: github.ref == 'refs/heads/main' && inputs.test_signing != true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
@@ -74,5 +104,5 @@ jobs:
             **Installation :** téléchargez `CloudStreamPC-${{ steps.version.outputs.version }}-setup.exe` et lancez-le.
             Version sans installation : `CloudStreamPC-${{ steps.version.outputs.version }}-portable.zip` (décompressez puis lancez `CloudStreamPC.exe`).
 
-            Windows peut afficher « Windows a protégé votre ordinateur » car l'application n'est pas signée :
-            cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
+            Les empreintes SHA-256 des fichiers sont dans `SHA256SUMS.txt` (vérification : `Get-FileHash fichier`).
+            Si Windows affiche « Windows a protégé votre ordinateur » : « Informations complémentaires » puis « Exécuter quand même ».

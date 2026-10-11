@@ -47,23 +47,14 @@ fun RecommendationRows() {
 @Composable
 private fun RecRow(title: String, items: List<RecItem>) {
     val nav = LocalNavigator.current
-    Column(Modifier.fillMaxWidth().padding(bottom = 18.dp, top = 4.dp)) {
-        Text(
-            title, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(items, key = { it.apiName + it.url }) { item ->
-                PosterCard(
-                    item.name,
-                    item.posterUrl,
-                    score = item.rating?.takeIf { it > 0 }?.let { "%.1f".format(it).removeSuffix(",0").removeSuffix(".0") },
-                    onDismiss = { Taste.dismiss(item.apiName, item.url) },
-                ) { nav.push(Route.Details(item.apiName, item.url, item.name, item.posterUrl)) }
-            }
+    MediaRow(title) {
+        items(items, key = { it.apiName + it.url }) { item ->
+            PosterCard(
+                item.name,
+                item.posterUrl,
+                score = item.rating?.takeIf { it > 0 }?.let { "%.1f".format(it).removeSuffix(",0").removeSuffix(".0") },
+                onDismiss = { Taste.dismiss(item.apiName, item.url) },
+            ) { nav.push(Route.Details(item.apiName, item.url, item.name, item.posterUrl)) }
         }
     }
 }

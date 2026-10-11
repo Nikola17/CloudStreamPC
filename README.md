@@ -19,9 +19,17 @@ compte IPTV et le catalogue Stremio.
 
 ## Fonctionnalités
 
-**Accueil** (comme CloudStream TV) : grande bannière, « Continuer à regarder », rangées par catégorie
-avec affiches (badge qualité HD/4K et note), flèche « Voir tout », bouton filtre en bas à droite pour
-choisir le fournisseur (filtres Films / Séries / Animés / TV…), bouton aléatoire et horloge en option.
+**Accueil** façon plateforme VOD : grande bannière avec le logo officiel du titre quand il existe, zoom
+lent et lecture directe ; onglets Accueil / Films / Séries / Animés / TV ; « Continuer à regarder » en
+vignettes paysage (un clic reprend la lecture) ; Top 10 ; rangées avec défilement au survol et « Tout voir » ;
+affiches avec badge qualité et note ; bouton filtre en bas à droite pour choisir le fournisseur.
+Typographie : Outfit pour les titres et Inter pour le texte (polices libres, SIL OFL).
+
+**Recommandations** sans compte (ni Simkl ni Trakt), calculées sur le PC à partir de ce que vous
+regardez : « Recommandé pour vous » et « Parce que vous avez regardé… ». Un titre fini compte plus qu'un
+titre abandonné, les favoris comptent aussi, et un titre suggéré par plusieurs de vos films passe devant.
+Quand une extension ne propose pas de titres similaires, l'application cherche le même titre dans vos autres
+fournisseurs. La croix au survol d'une affiche écarte un titre. Séparées par profil, réglables dans Disposition.
 
 **Lecture** : la meilleure qualité se lance directement, sans choisir (le bouton « Sources » de la fiche
 permet de choisir à la main). Si une source ne marche pas, l'application passe à la suivante.
@@ -70,6 +78,22 @@ Dans mpv : `Espace` pause, `F` plein écran, `←`/`→` ±5 s, `↑`/`↓` ±1 
 
 Les données sont dans `%APPDATA%\CloudStreamPC` ; les téléchargements dans `Vidéos\CloudStreamPC`.
 En cas de problème : Paramètres → Mises à jour et Sauvegarde → Afficher les journaux.
+
+## Signature de l'application
+
+Les versions publiées peuvent être signées (Authenticode SHA-256 horodaté) : installateur `.exe`, `.msi`
+et exécutable de la version portable. Il faut un certificat de signature de code au nom de son
+propriétaire, délivré par une autorité reconnue par Windows (vérification d'identité obligatoire).
+Une fois le certificat obtenu, il suffit d'ajouter des secrets au dépôt GitHub (Settings → Secrets and
+variables → Actions) ; la compilation signe alors automatiquement :
+
+- **Certificat dans Azure Key Vault** (cas général : depuis 2023 les clés doivent rester dans un module
+  matériel) : `AZURE_KEY_VAULT_URI`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_CERT_NAME`.
+- **Fichier .pfx** : `WINDOWS_CERTIFICATE_PFX` (contenu du .pfx en base64) et `WINDOWS_CERTIFICATE_PASSWORD`.
+
+Sans certificat, les fichiers ne sont pas signés ; leurs empreintes SHA-256 sont publiées dans
+`SHA256SUMS.txt` avec chaque version. Le lancement manuel de la compilation propose un test de la chaîne
+de signature avec un certificat jetable (sans publier de version).
 
 ## Limites connues
 

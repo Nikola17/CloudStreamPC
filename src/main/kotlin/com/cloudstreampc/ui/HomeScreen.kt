@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -106,6 +107,7 @@ object HomeState {
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     val sections = mutableStateMapOf<Int, List<HomePageList>>()
+    var tab by mutableStateOf(HomeTab.All)
     val failedSections = mutableStateListOf<String>()
 
     suspend fun load(api: MainAPI) = coroutineScope {
@@ -164,30 +166,52 @@ fun HomeScreen() {
     }.take(20)
     val ordered = HomeState.sections.toSortedMap().flatMap { (index, lists) -> lists.map { index to it } }
 
-    Box(Modifier.fillMaxSize()) {
+    fun matches(section: HomePageList, tab: HomeTab): Boolean {
+        val types = tab.types ?: return true
+        val known = section.list.mapNotNull { it.type }
+        return known.isNotEmpty() && known.count { it in types } * 2 >= known.size
+    }
+    val tabs = HomeTab.entries.filter { tab -> tab.types == null || ordered.any { matches(it.second, tab) } }
+    val tab = HomeState.tab.takeIf { it in tabs } ?: HomeTab.All
+    val visible = ordered.filter { matches(it.second, tab) }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val heroHeight = (maxHeight * 0.76f).coerceIn(460.dp, 780.dp)
         when {
             ordered.isEmpty() && HomeState.loading -> Column {
-                ContinueWatchingRow(continueWatching)
-                RecommendationRows()
-                LoadingBox("Chargement de ${selected.name}…")
+                Box(Modifier.fillMaxWidth().height(heroHeight * 0.6f).background(Brush.verticalGradient(listOf(CsColors.Surface, CsColors.Background))))
+                SkeletonRows()
             }
-            ordered.isEmpty() && HomeState.error != null -> Column(Modifier.verticalScroll(rememberScrollState())) {
+            ordered.isEmpty() && HomeState.error != null -> Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 32.dp)) {
                 ContinueWatchingRow(continueWatching)
                 RecommendationRows()
                 MessageBox("Impossible de charger ${selected.name}", HomeState.error, Modifier.fillMaxWidth().height(260.dp)) {
                     FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") }
                 }
             }
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-                if (Store.settings.showHero) {
-                    val featured = ordered.firstOrNull { !it.second.isHorizontalImages }?.second?.list?.take(6).orEmpty()
-                    if (featured.isNotEmpty()) item(key = "hero") { HeroBanner(selected, featured) }
-                } else {
-                    item(key = "top") { Spacer(Modifier.height(16.dp)) }
+            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+                val featured = visible.firstOrNull { !it.second.isHorizontalImages }?.second?.list?.take(6).orEmpty()
+                item(key = "hero") {
+                    if (Store.settings.showHero && featured.isNotEmpty()) {
+                        Box {
+                            HeroCarousel(selected, featured, heroHeight)
+                            HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp)) { HomeState.tab = it }
+                        }
+                    } else {
+                        HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp, bottom = 24.dp)) { HomeState.tab = it }
+                    }
                 }
-                item(key = "continue") { ContinueWatchingRow(continueWatching) }
-                item(key = "recommendations") { RecommendationRows() }
-                items(ordered, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
+                if (tab == HomeTab.All) {
+                    item(key = "continue") { ContinueWatchingRow(continueWatching) }
+                    item(key = "recommendations") { RecommendationRows() }
+                }
+                val topSection = visible.firstOrNull { !it.second.isHorizontalImages && it.second.list.size >= 5 }
+                if (topSection != null) {
+                    item(key = "top10") {
+                        Top10Row("Top 10 · ${topSection.second.name}", topSection.second.list, nav::open)
+                    }
+                }
+                items(visible.filter { it !== topSection }, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
                     val page = selected.mainPage.getOrNull(index)
                     PosterRow(
                         section.name,
@@ -197,11 +221,11 @@ fun HomeScreen() {
                         onOpen = nav::open,
                     )
                 }
-                if (HomeState.loading) item { LoadingBox(modifier = Modifier.fillMaxWidth().height(120.dp)) }
+                if (HomeState.loading) item { SkeletonRows(1) }
             }
         }
 
-        if (Store.settings.showClock) Clock(Modifier.align(Alignment.TopEnd).padding(20.dp))
+        if (Store.settings.showClock) Clock(Modifier.align(Alignment.TopEnd).padding(24.dp))
 
         // Floating buttons, bottom right: random title and provider filter (like the app).
         Column(
@@ -223,6 +247,7 @@ fun HomeScreen() {
         ProviderPickerDialog(providers, selected, onDismiss = { picking = false }) { api ->
             picking = false
             Store.updateSettings { it.copy(homeProvider = api.name) }
+            HomeState.tab = HomeTab.All
         }
     }
 }
@@ -256,110 +281,6 @@ private fun Clock(modifier: Modifier) {
         now.format(DateTimeFormatter.ofPattern("HH:mm")), fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
         modifier = modifier.clip(RoundedCornerShape(8.dp)).background(CsColors.Badge).padding(horizontal = 12.dp, vertical = 6.dp),
     )
-}
-
-/** Big featured banner at the top of the home page, rotating between a few titles. */
-@Composable
-private fun HeroBanner(api: MainAPI, items: List<SearchResponse>) {
-    val nav = LocalNavigator.current
-    var index by remember(items) { mutableIntStateOf(0) }
-    val item = items[index % items.size]
-    var details by remember(item.url) { mutableStateOf(DetailsCache.cached(api.name, item.url)) }
-    LaunchedEffect(item.url) {
-        if (details == null) details = runCatching { DetailsCache.load(api, item.url) }.getOrNull()
-    }
-    LaunchedEffect(items) {
-        while (true) {
-            delay(10_000)
-            index = (index + 1) % items.size
-        }
-    }
-    val response: LoadResponse? = details
-    Box(Modifier.fillMaxWidth().height(480.dp)) {
-        Crossfade(response?.backgroundPosterUrl ?: response?.posterUrl ?: item.posterUrl) { image ->
-            RemoteImage(image, Modifier.fillMaxSize(), item.posterHeaders, placeholder = { Box(Modifier.fillMaxSize().background(CsColors.Surface)) })
-        }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(CsColors.Background, CsColors.Background.copy(alpha = 0.6f), Color.Transparent))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to CsColors.Background)))
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 32.dp, bottom = 36.dp).widthIn(max = 640.dp)) {
-            Text(
-                item.name, fontSize = 44.sp, fontWeight = FontWeight.Bold, color = Color.White,
-                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 48.sp,
-            )
-            val meta = listOfNotNull(
-                (response?.year ?: item.yearOrNull())?.toString(),
-                response?.duration?.let { if (it >= 60) "${it / 60} h ${it % 60} min" else "$it min" },
-                response?.tags?.take(3)?.joinToString(", "),
-            )
-            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                (response?.score ?: item.score)?.let {
-                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFC107), modifier = Modifier.size(18.dp))
-                    Text(" %.1f    ".format(it.toDouble(10)), fontWeight = FontWeight.SemiBold)
-                }
-                Text(meta.joinToString("  ·  "), color = Color(0xFFDDDDDD))
-            }
-            response?.plot?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = Color(0xFFDDDDDD), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp), lineHeight = 21.sp)
-            }
-            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = { response?.let { PlayQueue.play(api, it) } ?: nav.open(item) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Text(" Lire", fontWeight = FontWeight.Bold)
-                }
-                FilledTonalButton(onClick = { nav.open(item) }) {
-                    Icon(Icons.Default.Info, null)
-                    Text(" Plus d'infos")
-                }
-            }
-            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items.indices.forEach { i ->
-                    Box(
-                        Modifier.size(width = if (i == index % items.size) 22.dp else 8.dp, height = 8.dp)
-                            .clip(CircleShape)
-                            .background(if (i == index % items.size) Color.White else Color.White.copy(alpha = 0.35f))
-                            .clickable { index = i }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContinueWatchingRow(entries: List<HistoryEntry>) {
-    if (entries.isEmpty()) return
-    val nav = LocalNavigator.current
-    Column(Modifier.fillMaxWidth().padding(bottom = 18.dp, top = 8.dp)) {
-        Text(
-            "Continuer à regarder",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 18.dp, bottom = 12.dp),
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(entries, key = { it.item.apiName + it.item.url }) { entry ->
-                val progress = entry.episodeData?.let { Store.progressOf(entry.item.apiName, it) }
-                PosterCard(
-                    entry.item.name,
-                    entry.item.posterUrl,
-                    subtitle = when {
-                        entry.episodeData != null && Store.isWatched(entry.item.apiName, entry.episodeData) -> "Épisode suivant"
-                        else -> listOfNotNull(
-                            entry.episodeLabel?.substringBefore("  "),
-                            progress?.let { "${formatTime(it.position)} / ${formatTime(it.duration)}" },
-                        ).joinToString(" · ").ifBlank { entry.item.apiName }
-                    },
-                    progress = progress?.fraction,
-                ) { nav.open(entry.item) }
-            }
-        }
-    }
 }
 
 private val typeFilters = listOf(
@@ -464,7 +385,7 @@ fun CategoryScreen(route: Route.Category) {
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(items, key = { it.url }) { SearchResponseCard(it, route.page.horizontalImages, nav::open) }
+                items(items, key = { it.url }) { SearchResponseCard(it, route.page.horizontalImages, onOpen = nav::open) }
                 if (loading) item(span = { GridItemSpan(maxLineSpan) }) {
                     LoadingBox(modifier = Modifier.fillMaxWidth().height(80.dp))
                 }

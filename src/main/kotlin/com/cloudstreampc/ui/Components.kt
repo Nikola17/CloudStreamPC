@@ -90,11 +90,11 @@ private fun Badge(text: String, modifier: Modifier = Modifier, star: Boolean = f
         modifier
             .clip(RoundedCornerShape(50))
             .background(CsColors.Badge)
-            .padding(horizontal = 9.dp, vertical = 3.dp),
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        if (star) Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.padding(start = 2.dp).size(12.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = Color.White)
+        if (star) Icon(Icons.Default.Star, null, tint = Color(0xFFF5C518), modifier = Modifier.padding(start = 3.dp).size(12.dp))
     }
 }
 
@@ -111,13 +111,14 @@ fun PosterCard(
     progress: Float? = null,
     /** Shows a "Pas intéressé" cross on hover. */
     onDismiss: (() -> Unit)? = null,
+    showTitle: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val settings = Store.settings
     val width = if (horizontal) posterWidth * 1.45f else posterWidth
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(8.dp)
     Column(
         modifier
             .width(width)
@@ -129,7 +130,7 @@ fun PosterCard(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(if (horizontal) 16f / 9f else 2f / 3f)
-                .scale(if (hovered) 1.04f else 1f)
+                .scale(if (hovered) 1.05f else 1f)
                 .clip(shape)
                 .background(CsColors.Surface)
                 .border(2.dp, if (hovered) Color.White else Color.Transparent, shape)
@@ -176,26 +177,26 @@ fun PosterCard(
                 )
             }
         }
-        if (settings.titleBelowPoster) {
+        if (settings.titleBelowPoster && showTitle) {
             Text(
                 title,
-                modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
-                fontSize = 16.sp,
-                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 10.dp, start = 4.dp, end = 4.dp).fillMaxWidth(),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
+                fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = Color.White,
+                color = if (hovered) Color.White else Color(0xFFD6D6D6),
             )
         }
         if (subtitle != null) {
-            Text(subtitle, fontSize = 12.sp, color = CsColors.TextMuted, maxLines = 1, textAlign = TextAlign.Center)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = CsColors.TextMuted, maxLines = 1, textAlign = TextAlign.Center)
         }
     }
 }
 
 @Composable
-fun SearchResponseCard(item: SearchResponse, horizontal: Boolean = false, onOpen: (SearchResponse) -> Unit) {
+fun SearchResponseCard(item: SearchResponse, horizontal: Boolean = false, showTitle: Boolean = true, onOpen: (SearchResponse) -> Unit) {
     val dub = (item as? AnimeSearchResponse)?.dubStatus?.takeIf { Store.settings.showDubSubBadge }?.let { set ->
         listOfNotNull(if (DubStatus.Dubbed in set) "VF" else null, if (DubStatus.Subbed in set) "VOSTFR" else null)
             .joinToString("/").ifBlank { null }
@@ -207,6 +208,7 @@ fun SearchResponseCard(item: SearchResponse, horizontal: Boolean = false, onOpen
         badge = dub ?: qualityLabel(item.quality),
         score = item.score?.let { "%.1f".format(it.toDouble(10)).removeSuffix(",0").removeSuffix(".0") },
         horizontal = horizontal,
+        showTitle = showTitle,
         onClick = { onOpen(item) },
     )
 }
@@ -219,26 +221,8 @@ fun PosterRow(
     onSeeAll: (() -> Unit)? = null,
     onOpen: (SearchResponse) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 18.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.weight(1f))
-            if (onSeeAll != null) {
-                IconButton(onClick = onSeeAll) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Voir tout", tint = Color.White, modifier = Modifier.size(30.dp))
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(items, key = { it.apiName + it.url }) { SearchResponseCard(it, horizontal, onOpen) }
-        }
+    MediaRow(title, onSeeAll) {
+        items(items, key = { it.apiName + it.url }) { SearchResponseCard(it, horizontal, onOpen = onOpen) }
     }
 }
 

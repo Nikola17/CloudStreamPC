@@ -62,6 +62,7 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     headers: Map<String, String>? = null,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: androidx.compose.ui.Alignment = androidx.compose.ui.Alignment.Center,
     placeholder: @Composable () -> Unit = { Box(modifier.background(CsColors.SurfaceHigh)) },
 ) {
     var bitmap by remember(url) { mutableStateOf(url?.let { ImageLoader.cached(it) }) }
@@ -72,6 +73,6 @@ fun RemoteImage(
     if (image == null) {
         placeholder()
     } else {
-        Image(image, contentDescription = null, modifier = modifier, contentScale = contentScale)
+        Image(image, contentDescription = null, modifier = modifier, contentScale = contentScale, alignment = alignment)
     }
 }
