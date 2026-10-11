@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -62,7 +63,7 @@ private sealed interface RepoContent {
 private val repoContents = mutableStateMapOf<String, RepoContent>()
 
 @Composable
-fun ExtensionsScreen() {
+fun ExtensionsScreen(onBack: (() -> Unit)? = null) {
     val nav = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val settings = Store.settings
@@ -110,9 +111,11 @@ fun ExtensionsScreen() {
         settings.repositories.filter { it.url !in repoContents }.forEach { refresh(it) }
     }
 
+    var stremioTab by remember { mutableStateOf(false) }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
-            ScreenHeader("Extensions") {
+            ScreenHeader("Extensions", onBack = onBack) {
                 TextButton(onClick = {
                     scope.launch {
                         val count = PluginManager.updateAll()
@@ -121,6 +124,16 @@ fun ExtensionsScreen() {
                     }
                 }) { Text("Mettre à jour tout") }
             }
+        }
+        item {
+            Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(!stremioTab, { stremioTab = false }, { Text("Extensions CloudStream") })
+                FilterChip(stremioTab, { stremioTab = true }, { Text("Addons Stremio") })
+            }
+        }
+        if (stremioTab) {
+            item { StremioAddonsSection() }
+            return@LazyColumn
         }
         item {
             Column(Modifier.padding(horizontal = 24.dp)) {

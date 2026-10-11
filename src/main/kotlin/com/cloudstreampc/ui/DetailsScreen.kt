@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,8 +60,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.SavedItem
 import com.cloudstreampc.core.Store
+import com.cloudstreampc.download.DownloadManager
 import com.cloudstreampc.player.PlaybackManager
 import com.cloudstreampc.player.PlayRequest
+import com.cloudstreampc.player.PlayQueue
 import com.cloudstreampc.player.Playable
 import com.cloudstreampc.plugins.PluginManager
 import com.lagradost.cloudstream3.AnimeLoadResponse
@@ -74,12 +77,24 @@ import com.lagradost.cloudstream3.TorrentLoadResponse
 import com.lagradost.cloudstream3.TvSeriesLoadResponse
 import com.lagradost.cloudstream3.TvType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.net.URI
 
 /** Load responses already fetched this session, so going back is instant. */
-private val detailsCache = mutableMapOf<String, LoadResponse>()
+object DetailsCache {
+    private val cache = java.util.Collections.synchronizedMap(mutableMapOf<String, LoadResponse>())
+
+    fun cached(apiName: String, url: String): LoadResponse? = cache["$apiName|$url"]
+
+    fun clear() = cache.clear()
+
+    suspend fun load(api: MainAPI, url: String): LoadResponse? {
+        cached(api.name, url)?.let { return it }
+        return withContext(Dispatchers.IO) { api.load(url) }?.also { cache["${api.name}|$url"] = it }
+    }
+}
 
 
 private fun TvType.label() = when (this) {
@@ -108,7 +123,7 @@ fun DetailsScreen(route: Route.Details) {
     val nav = LocalNavigator.current
     val key = route.apiName + "|" + route.url
     val api = PluginManager.providers.firstOrNull { it.name == route.apiName }
-    var response by remember(key) { mutableStateOf(detailsCache[key]) }
+    var response by remember(key) { mutableStateOf(DetailsCache.cached(route.apiName, route.url)) }
     var error by remember(key) { mutableStateOf<String?>(null) }
     var attempt by remember(key) { mutableStateOf(0) }
 
@@ -116,11 +131,8 @@ fun DetailsScreen(route: Route.Details) {
         if (response != null || api == null) return@LaunchedEffect
         error = null
         try {
-            val loaded = withContext(Dispatchers.IO) { api.load(route.url) }
-            if (loaded == null) error = "L'extension n'a rien renvoyé." else {
-                detailsCache[key] = loaded
-                response = loaded
-            }
+            val loaded = DetailsCache.load(api, route.url)
+            if (loaded == null) error = "L'extension n'a rien renvoyé." else response = loaded
         } catch (t: Throwable) {
             error = t.message ?: t.toString()
         }
@@ -149,11 +161,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     val saved = data.toSavedItem()
 
     // Episodes, grouped by dub status (animes) then by season.
-    val episodesByDub: Map<DubStatus?, List<Episode>> = when (data) {
-        is TvSeriesLoadResponse -> mapOf(null to data.episodes)
-        is AnimeLoadResponse -> data.episodes.mapKeys { it.key as DubStatus? }.filterValues { it.isNotEmpty() }
-        else -> emptyMap()
-    }
+    val episodesByDub: Map<DubStatus?, List<Episode>> = PlayQueue.episodesByDub(data)
     var dub by remember(data) { mutableStateOf(episodesByDub.keys.firstOrNull()) }
     val episodes = episodesByDub[dub].orEmpty()
     val seasons = episodes.map { it.season }.distinct().sortedBy { it ?: Int.MAX_VALUE }
@@ -165,21 +173,25 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
         )
     }
 
-    fun episodeLabelOf(ep: Episode, index: Int): String {
-        val number = ep.episode ?: (index + 1)
-        val prefix = if (ep.season != null) "S${ep.season}·E$number" else "Épisode $number"
-        return if (ep.name.isNullOrBlank()) prefix else "$prefix  ${ep.name}"
-    }
-
     // Everything playable from this page, in order, so the next episode can follow.
-    val queue: List<Playable> = when (data) {
-        is MovieLoadResponse -> listOf(Playable(data.dataUrl, null, data.name))
-        is LiveStreamLoadResponse -> listOf(Playable(data.dataUrl, null, data.name))
-        else -> episodes.mapIndexed { index, ep -> Playable(ep.data, episodeLabelOf(ep, index), data.name) }
+    val queue: List<Playable> = PlayQueue.build(data, episodes)
+
+    val scope = rememberCoroutineScope()
+
+    /** Plays with the best source right away (setting), or [chooseSource] to pick it by hand. */
+    fun play(index: Int, chooseSource: Boolean = false) {
+        if (index !in queue.indices) return
+        val request = PlayRequest(api, data, queue, index)
+        PlaybackManager.request(if (chooseSource) request.copy(chooseManually = true) else request)
     }
 
-    fun play(index: Int) {
-        if (index in queue.indices) PlaybackManager.request(PlayRequest(api, data, queue, index))
+    fun download(index: Int) {
+        if (index !in queue.indices || data is LiveStreamLoadResponse) return
+        nav.toast("Recherche de la meilleure source à télécharger…")
+        scope.launch {
+            val error = DownloadManager.download(PlayRequest(api, data, queue, index))
+            nav.toast(error ?: "Ajouté aux téléchargements")
+        }
     }
 
     fun seasonLabel(number: Int?): String {
@@ -232,13 +244,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                         }
                         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             // Last episode launched; once it is watched, the next one is proposed.
-                            val lastIndex = queue.indexOfFirst { it.data == lastWatched?.episodeData }
-                            val mainIndex = when {
-                                queue.isEmpty() -> -1
-                                lastIndex < 0 -> 0
-                                Store.isWatched(data.apiName, queue[lastIndex].data) && lastIndex + 1 < queue.size -> lastIndex + 1
-                                else -> lastIndex
-                            }
+                            val mainIndex = PlayQueue.startIndex(data, queue)
                             if (mainIndex >= 0) {
                                 val target = queue[mainIndex]
                                 val progress = Store.progressOf(data.apiName, target.data)?.takeIf { it.position > 15 }
@@ -254,6 +260,17 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                             else -> "Lire"
                                         }
                                     )
+                                }
+                            }
+                            if (mainIndex >= 0) {
+                                FilledTonalButton(onClick = { play(mainIndex, chooseSource = true) }) { Text("Sources") }
+                                if (data !is LiveStreamLoadResponse) {
+                                    val existing = DownloadManager.find(data.apiName, queue[mainIndex].data)
+                                    FilledTonalButton(onClick = { download(mainIndex) }) {
+                                        Icon(AppIcons.Download, null)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(if (existing != null) "Téléchargé" else "Télécharger")
+                                    }
                                 }
                             }
                             val favorite = Store.isFavorite(data.apiName, data.url)
@@ -277,7 +294,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                         data.plot?.takeIf { it.isNotBlank() }?.let {
                             Text(it, modifier = Modifier.padding(top = 16.dp).widthIn(max = 900.dp), color = Color(0xFFDDDDDD), lineHeight = 22.sp)
                         }
-                        data.actors?.takeIf { it.isNotEmpty() }?.let { actors ->
+                        data.actors?.takeIf { it.isNotEmpty() && Store.settings.showCast }?.let { actors ->
                             Text(
                                 "Avec : " + actors.take(10).joinToString(", ") { it.actor.name },
                                 color = CsColors.TextMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp),
@@ -316,7 +333,9 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                     watched = watched,
                     progress = Store.progressOf(data.apiName, ep.data)?.fraction,
                     current = lastWatched?.episodeData == ep.data,
+                    downloaded = DownloadManager.find(data.apiName, ep.data) != null,
                     onToggleWatched = { Store.setWatched(data.apiName, ep.data, !watched) },
+                    onDownload = { download(index) },
                 ) { play(index) }
             }
         }
@@ -338,7 +357,9 @@ private fun EpisodeRow(
     watched: Boolean,
     progress: Float?,
     current: Boolean,
+    downloaded: Boolean,
     onToggleWatched: () -> Unit,
+    onDownload: () -> Unit,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -375,6 +396,13 @@ private fun EpisodeRow(
                 Text(it, color = CsColors.TextMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             ep.runTime?.let { Text("$it min", color = CsColors.TextMuted, fontSize = 12.sp) }
+        }
+        IconButton(onClick = onDownload) {
+            Icon(
+                if (downloaded) AppIcons.Download else AppIcons.DownloadOutlined,
+                "Télécharger",
+                tint = if (downloaded) CsColors.Primary else CsColors.TextMuted.copy(alpha = if (hovered) 0.9f else 0.35f),
+            )
         }
         IconButton(onClick = onToggleWatched) {
             Icon(

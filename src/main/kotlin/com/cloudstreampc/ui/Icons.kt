@@ -35,6 +35,28 @@ object AppIcons {
             "m6 0h-4v-2h4v2zm0-4H10v-2h10v2z",
     )
 
+    val Download = icon("Download", "M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z")
+    val DownloadOutlined = icon("DownloadOutlined", "M19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11zm-6 7h14v2H5z")
+    val Folder = icon(
+        "Folder",
+        "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z",
+    )
+    val FolderOpen = icon(
+        "FolderOpen",
+        "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z",
+    )
+    val FilterList = icon("FilterList", "M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z")
+    val Pause = icon("Pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
+    val Shuffle = icon(
+        "Shuffle",
+        "M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5z" +
+            "m.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z",
+    )
+    val Tv = icon(
+        "Tv",
+        "M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z",
+    )
+
     private fun icon(name: String, path: String) =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
             .addPath(addPathNodes(path), fill = SolidColor(Color.Black))

@@ -39,7 +39,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.cloudstreampc.plugins.PluginManager
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import com.cloudstreampc.core.Store
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.TvType
 import kotlinx.coroutines.CancellationException
@@ -63,6 +68,8 @@ object SearchState {
     var typeFilter by mutableStateOf<String?>(null)
     val results = mutableStateMapOf<String, ProviderResult>()
     var job: Job? = null
+    /** Set by other screens to search [query] as soon as the tab opens. */
+    var pendingSearch by mutableStateOf(false)
 }
 
 private val typeFilters = listOf(
@@ -77,13 +84,14 @@ fun SearchScreen() {
     val nav = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val focus = remember { FocusRequester() }
-    val providers = PluginManager.providers
+    val providers = visibleProviders()
 
     fun runSearch() {
         val query = SearchState.query.trim()
         if (query.isEmpty()) return
         SearchState.job?.cancel()
         SearchState.lastQuery = query
+        Store.addSearchQuery(query)
         SearchState.results.clear()
         providers.forEach { SearchState.results[it.name] = ProviderResult.Loading }
         SearchState.job = scope.launch {
@@ -105,7 +113,13 @@ fun SearchScreen() {
         }
     }
 
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) {
+        focus.requestFocus()
+        if (SearchState.pendingSearch) {
+            SearchState.pendingSearch = false
+            runSearch()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp, 20.dp, 24.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -145,7 +159,28 @@ fun SearchScreen() {
             return
         }
         if (SearchState.lastQuery.isEmpty()) {
-            MessageBox("Recherchez dans toutes vos extensions", "Tapez un titre puis appuyez sur Entrée.")
+            val history = Store.library.searchHistory
+            if (history.isEmpty() || !Store.settings.searchHistoryEnabled) {
+                MessageBox("Recherchez dans toutes vos extensions", "Tapez un titre puis appuyez sur Entrée.")
+            } else {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Recherches récentes", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { Store.updateLibrary { it.copy(searchHistory = emptyList()) } }) { Text("Effacer") }
+                    }
+                    history.forEach { query ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                .clickable { SearchState.query = query; runSearch() }
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Search, null, tint = CsColors.TextMuted)
+                            Text("   $query", fontSize = 16.sp)
+                        }
+                    }
+                }
+            }
             return
         }
 

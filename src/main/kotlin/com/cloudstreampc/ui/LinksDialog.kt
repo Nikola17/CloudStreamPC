@@ -60,7 +60,7 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
     var loading by remember(request) { mutableStateOf(true) }
     var error by remember(request) { mutableStateOf<String?>(null) }
     var started by remember(request) { mutableStateOf(false) }
-    val autoPlay = request.autoPlay || Store.settings.autoPlayBestSource
+    val autoPlay = !request.chooseManually && (request.autoPlay || Store.settings.autoPlayBestSource)
     val resumeAt = remember(request) { PlaybackManager.resumePosition(request) }
 
     fun play(link: ExtractorLink) {
@@ -146,10 +146,19 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Text("  Recherche des sources…", color = CsColors.TextMuted)
                     }
-                    sorted.isEmpty() -> Text(
-                        error?.let { "Erreur : $it" } ?: "Aucune source trouvée. Le site a peut-être changé ou la vidéo a été retirée.",
-                        color = CsColors.TextMuted,
-                    )
+                    sorted.isEmpty() -> Column {
+                        Text(
+                            error?.let { "Erreur : $it" } ?: "Aucune source trouvée. Le site a peut-être changé ou la vidéo a été retirée.",
+                            color = CsColors.TextMuted,
+                        )
+                        // Like Stremio: look for the same title in the other providers.
+                        TextButton(onClick = {
+                            SearchState.query = request.response.name
+                            SearchState.pendingSearch = true
+                            onDismiss()
+                            nav.select(Tab.Search)
+                        }) { Text("Chercher « ${request.response.name} » dans les autres fournisseurs") }
+                    }
                     else -> LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(sorted, key = { it.url }) { link ->
                             LinkRow(link, recommended = link == best, failed = link.name in request.failedSources, onPlay = { play(link) })

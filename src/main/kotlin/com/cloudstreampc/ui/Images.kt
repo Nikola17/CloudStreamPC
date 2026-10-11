@@ -32,6 +32,11 @@ object ImageLoader {
 
     fun cached(url: String): ImageBitmap? = cache[url]
 
+    fun clear() {
+        cache.clear()
+        failed.clear()
+    }
+
     suspend fun load(url: String, headers: Map<String, String>?): ImageBitmap? {
         cache[url]?.let { return it }
         failed[url]?.let { if (System.currentTimeMillis() - it < 60_000) return null }

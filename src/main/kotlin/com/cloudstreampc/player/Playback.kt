@@ -31,6 +31,8 @@ data class PlayRequest(
     val autoPlay: Boolean = false,
     /** Names of the sources that failed to play for this request. */
     val failedSources: List<String> = emptyList(),
+    /** Show the source list even when the best source plays automatically. */
+    val chooseManually: Boolean = false,
 ) {
     val playable: Playable get() = queue[index]
     val next: PlayRequest?
@@ -118,7 +120,7 @@ object PlaybackManager {
             val quickFailure = System.currentTimeMillis() - startedAt < 15_000 && position == null
             if (ipcPath != null && exitCode != 0 && quickFailure) {
                 Logger.info("Échec de lecture de ${link.name} (code $exitCode)")
-                pending = request.copy(autoPlay = false, failedSources = request.failedSources + link.name)
+                pending = request.copy(autoPlay = false, chooseManually = true, failedSources = request.failedSources + link.name)
                 return@launch
             }
 

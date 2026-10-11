@@ -18,5 +18,10 @@ object AppDirs {
     val plugins: File get() = File(root, "plugins").apply { mkdirs() }
     val logs: File get() = File(root, "logs").apply { mkdirs() }
     val settingsFile: File get() = File(root, "settings.json")
-    val libraryFile: File get() = File(root, "library.json")
+    /** The default profile keeps the original file name. */
+    fun libraryFile(profileId: String): File =
+        File(root, if (profileId == "default") "library.json" else "library-$profileId.json")
+
+    val backups: File get() = File(root, "backups").apply { mkdirs() }
+    val cache: File get() = File(root, "cache").apply { mkdirs() }
 }

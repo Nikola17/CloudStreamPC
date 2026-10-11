@@ -49,6 +49,10 @@ object PluginManager {
     var revision by mutableIntStateOf(0)
         private set
 
+    fun notifyProvidersChanged() {
+        revision++
+    }
+
     /** All loaded providers; reading it in a composable subscribes to changes. */
     val providers: List<MainAPI>
         get() {
@@ -127,9 +131,25 @@ object PluginManager {
         return updated
     }
 
+    /** Downloads the installed extensions whose file is missing (after restoring a backup). */
+    suspend fun restoreMissing() = withContext(Dispatchers.IO) {
+        for (plugin in Store.settings.installedPlugins) {
+            if (cs3File(plugin.internalName).exists() && loaded.containsKey(plugin.internalName)) continue
+            mutex.withLock {
+                runCatching {
+                    if (!cs3File(plugin.internalName).exists()) {
+                        cs3File(plugin.internalName).writeBytes(app.get(plugin.url, cacheTime = 0).body.bytes())
+                    }
+                    loadLocked(plugin)
+                }.onFailure { Logger.error("Restauration de ${plugin.name}", it) }
+            }
+        }
+    }
+
     private fun loadLocked(plugin: InstalledPlugin) {
         val name = plugin.internalName
         val file = cs3File(name)
+        if (loaded.containsKey(name)) return
         try {
             if (!file.exists()) {
                 states[name] = PluginState.Failed("Fichier manquant, réinstallez l'extension")

@@ -16,13 +16,27 @@ enum class Tab(val label: String) {
     Home("Accueil"),
     Search("Recherche"),
     Library("Bibliothèque"),
-    Extensions("Extensions"),
+    Downloads("Téléchargements"),
     Settings("Paramètres"),
+}
+
+/** Sub-pages of the settings, like the Android app. */
+enum class SettingsPage(val title: String) {
+    General("Général"),
+    Player("Lecteur"),
+    Providers("Fournisseurs"),
+    Layout("Disposition"),
+    Updates("Mises à jour et Sauvegarde"),
+    Accounts("Comptes et Sécurité"),
+    Extensions("Extensions"),
+    Iptv("Comptes IPTV"),
+    Profiles("Profils"),
 }
 
 sealed interface Route {
     data class Details(val apiName: String, val url: String, val name: String, val posterUrl: String?) : Route
     data class Category(val apiName: String, val page: MainPageData) : Route
+    data class Settings(val page: SettingsPage) : Route
 }
 
 class Navigator(private val scope: CoroutineScope) {

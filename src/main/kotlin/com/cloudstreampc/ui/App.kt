@@ -1,39 +1,54 @@
 package com.cloudstreampc.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.TooltipArea
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private fun Tab.icon() = when (this) {
-    Tab.Home -> Icons.Default.Home
-    Tab.Search -> Icons.Default.Search
-    Tab.Library -> AppIcons.VideoLibrary
-    Tab.Extensions -> AppIcons.Extension
-    Tab.Settings -> Icons.Default.Settings
+private fun Tab.icon(selected: Boolean): ImageVector = when (this) {
+    Tab.Home -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
+    Tab.Search -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
+    Tab.Library -> if (selected) AppIcons.Folder else AppIcons.FolderOpen
+    Tab.Downloads -> if (selected) AppIcons.Download else AppIcons.DownloadOutlined
+    Tab.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
 }
 
 @Composable
@@ -49,21 +64,7 @@ fun App(nav: Navigator) {
         CompositionLocalProvider(LocalNavigator provides nav) {
             Surface(Modifier.fillMaxSize(), color = CsColors.Background) {
                 Row(Modifier.fillMaxSize()) {
-                    NavigationRail(Modifier.fillMaxHeight(), containerColor = CsColors.Surface) {
-                        Text(
-                            "CloudStream", fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                            color = CsColors.Primary, modifier = Modifier.padding(vertical = 12.dp),
-                        )
-                        Tab.entries.forEach { tab ->
-                            NavigationRailItem(
-                                selected = nav.tab == tab && nav.stack.isEmpty(),
-                                onClick = { nav.select(tab) },
-                                icon = { Icon(tab.icon(), tab.label) },
-                                label = { Text(tab.label, fontSize = 11.sp) },
-                            )
-                            Spacer(Modifier.height(4.dp))
-                        }
-                    }
+                    Sidebar(nav)
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         // The current tab stays composed under opened pages to keep its scroll position.
                         tabs.SaveableStateProvider(nav.tab) {
@@ -71,7 +72,7 @@ fun App(nav: Navigator) {
                                 Tab.Home -> HomeScreen()
                                 Tab.Search -> SearchScreen()
                                 Tab.Library -> LibraryScreen()
-                                Tab.Extensions -> ExtensionsScreen()
+                                Tab.Downloads -> DownloadsScreen()
                                 Tab.Settings -> SettingsScreen()
                             }
                         }
@@ -80,12 +81,62 @@ fun App(nav: Navigator) {
                                 when (route) {
                                     is Route.Details -> DetailsScreen(route)
                                     is Route.Category -> CategoryScreen(route)
+                                    is Route.Settings -> SettingsPageScreen(route.page)
                                 }
                             }
                         }
                         PlaybackOverlays(Modifier.align(Alignment.BottomStart))
                         SnackbarHost(nav.snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                     }
+                }
+            }
+        }
+    }
+}
+
+/** CloudStream's TV-style side bar: icons only, vertically centered. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Sidebar(nav: Navigator) {
+    Column(
+        Modifier.width(88.dp).fillMaxHeight().background(CsColors.Sidebar),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Tab.entries.forEach { tab ->
+            val selected = nav.tab == tab
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            TooltipArea(
+                tooltip = {
+                    Text(
+                        tab.label, fontSize = 13.sp, color = Color.White,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(CsColors.SurfaceHigh)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                },
+                delayMillis = 400,
+            ) {
+                Box(
+                    Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                selected -> CsColors.Primary.copy(alpha = 0.18f)
+                                hovered -> Color.White.copy(alpha = 0.08f)
+                                else -> Color.Transparent
+                            }
+                        )
+                        .hoverable(interaction)
+                        .clickable(interaction, indication = null) { nav.select(tab) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        tab.icon(selected), tab.label,
+                        tint = if (selected) CsColors.Primary else Color.White,
+                        modifier = Modifier.size(30.dp),
+                    )
                 }
             }
         }

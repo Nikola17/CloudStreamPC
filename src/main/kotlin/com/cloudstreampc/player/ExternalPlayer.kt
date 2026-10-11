@@ -54,6 +54,7 @@ object ExternalPlayer {
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
                 command += "--sub-font-size=${settings.subtitleSize}"
+                if (settings.playbackSpeed != 1.0) command += "--speed=${settings.playbackSpeed}"
                 command += "--user-agent=$userAgent"
                 if (referer != null) command += "--referrer=$referer"
                 headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
@@ -78,6 +79,25 @@ object ExternalPlayer {
             .redirectErrorStream(true)
             .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log"))
             .start()
+    }
+
+    /** Plays a downloaded file (no headers needed). */
+    fun playFile(file: File, title: String) {
+        val settings = Store.settings
+        val executable = findPlayer(settings.player, settings.playerPath) ?: throw PlayerNotFound(settings.player)
+        val command = mutableListOf(executable.absolutePath)
+        when (settings.player) {
+            PlayerKind.MPV -> {
+                command += "--force-media-title=$title"
+                if (settings.fullscreen) command += "--fs"
+                command += "--"
+            }
+            PlayerKind.VLC -> if (settings.fullscreen) command += "--fullscreen"
+            PlayerKind.CUSTOM -> Unit
+        }
+        command += file.absolutePath
+        ProcessBuilder(command).redirectErrorStream(true)
+            .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()
     }
 
     fun findPlayer(kind: PlayerKind, customPath: String?): File? {

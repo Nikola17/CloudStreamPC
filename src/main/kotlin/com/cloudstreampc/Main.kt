@@ -1,8 +1,14 @@
 package com.cloudstreampc
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.key
@@ -13,11 +19,15 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.cloudstreampc.core.Backup
 import com.cloudstreampc.core.Logger
-import com.cloudstreampc.core.RepositoryEntry
 import com.cloudstreampc.core.Store
+import com.cloudstreampc.net.Network
 import com.cloudstreampc.plugins.PluginManager
-import com.cloudstreampc.ui.App
+import com.cloudstreampc.providers.BuiltinProviders
+import com.cloudstreampc.ui.CloudStreamTheme
+import com.cloudstreampc.ui.StartupGate
+import com.cloudstreampc.ui.defaultRepository
 import com.cloudstreampc.ui.rememberNavigator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,32 +38,31 @@ import java.awt.Toolkit
 import java.awt.event.AWTEventListener
 import java.awt.event.MouseEvent
 
-/** Repository proposed on first launch; it can be removed in the Extensions tab. */
-private val defaultRepository = RepositoryEntry(
-    "CloudStream FR",
-    "https://raw.githubusercontent.com/Nikola17/cloudstream-frenchstream/main/repo.json",
-)
-
 private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 fun main() {
     Logger.install()
-    if (!Store.settings.firstLaunchDone) {
-        Store.updateSettings { it.copy(repositories = listOf(defaultRepository), firstLaunchDone = true) }
+    Network.apply(Store.settings.dns)
+
+    if (!Store.settings.firstLaunchDone && Store.settings.repositories.isEmpty()) {
+        Store.updateSettings { it.copy(repositories = listOf(defaultRepository)) }
     }
 
     appScope.launch {
+        launch { BuiltinProviders.sync() }
         PluginManager.loadInstalled()
         if (Store.settings.autoUpdatePlugins) {
             runCatching { PluginManager.updateAll() }.onFailure { Logger.error("Mise à jour des extensions", it) }
         }
+        Backup.autoBackupIfDue()
     }
 
     application {
         val state = rememberWindowState(width = 1360.dp, height = 860.dp, placement = WindowPlacement.Maximized)
         val nav = rememberNavigator()
+        var confirmExit by remember { mutableStateOf(false) }
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = { if (Store.settings.confirmExit) confirmExit = true else exitApplication() },
             state = state,
             title = "CloudStream",
             icon = painterResource("icon.png"),
@@ -70,7 +79,17 @@ fun main() {
                 Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK)
                 onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(listener) }
             }
-            App(nav)
+            StartupGate(nav)
+            if (confirmExit) {
+                CloudStreamTheme {
+                    AlertDialog(
+                        onDismissRequest = { confirmExit = false },
+                        title = { Text("Quitter CloudStreamPC ?") },
+                        confirmButton = { TextButton(onClick = ::exitApplication) { Text("Quitter") } },
+                        dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("Annuler") } },
+                    )
+                }
+            }
         }
     }
 }

@@ -23,6 +23,37 @@ data class InstalledPlugin(
 
 enum class PlayerKind { MPV, VLC, CUSTOM }
 
+/** A user profile: its own favorites, history and progress, like CloudStream's accounts. */
+data class Profile(
+    val id: String = "default",
+    val name: String = "Défaut",
+    /** ARGB color of the avatar. */
+    val color: Long = 0xFF3D50FA,
+    /** Optional 4-digit code asked when switching to this profile. */
+    val pin: String? = null,
+)
+
+enum class IptvType { XTREAM, M3U }
+
+/** An IPTV subscription: Xtream Codes (server + username + password) or an M3U playlist. */
+data class IptvAccount(
+    val id: String = "",
+    val name: String = "",
+    val type: IptvType = IptvType.XTREAM,
+    /** Xtream server (http://host:port) or M3U playlist URL. */
+    val url: String = "",
+    val username: String = "",
+    val password: String = "",
+    val enabled: Boolean = true,
+)
+
+/** A Stremio addon, identified by its manifest URL. */
+data class StremioAddonEntry(
+    val manifestUrl: String = "",
+    val name: String = "",
+    val enabled: Boolean = true,
+)
+
 data class Settings(
     val repositories: List<RepositoryEntry> = emptyList(),
     val installedPlugins: List<InstalledPlugin> = emptyList(),
@@ -31,17 +62,67 @@ data class Settings(
     val homeProvider: String? = null,
     val autoUpdatePlugins: Boolean = true,
     val firstLaunchDone: Boolean = false,
+    /** Bumped when a default changes and existing settings must follow it. */
+    val settingsVersion: Int = 0,
+
+    // Lecteur
     /** Highest quality to pick automatically (e.g. 1080); null picks the best available. */
     val preferredQuality: Int? = null,
-    /** Skip the source list and play the best source right away. */
-    val autoPlayBestSource: Boolean = false,
+    /** Play the best source right away instead of showing the list. */
+    val autoPlayBestSource: Boolean = true,
     val autoPlayNextEpisode: Boolean = true,
     val resumePlayback: Boolean = true,
     val fullscreen: Boolean = true,
+    val playbackSpeed: Double = 1.0,
     /** Comma separated languages given to mpv (`--slang` / `--alang`). */
     val subtitleLanguages: String = "fr,fre,fra,french",
     val audioLanguages: String = "fr,fre,fra,french",
     val subtitleSize: Int = 55,
+
+    // Fournisseurs
+    /** Languages of the extensions to show; empty shows all. */
+    val providerLanguages: Set<String> = emptySet(),
+    /** TvType names shown on the home page; empty shows all. */
+    val preferredMedia: Set<String> = emptySet(),
+    val showDubSubBadge: Boolean = true,
+    val nsfw: Boolean = false,
+
+    // Disposition
+    val primaryColor: Long = 0xFF3D50FA,
+    val theme: String = "black",
+    /** 0 small, 1 normal, 2 large. */
+    val posterSize: Int = 1,
+    val titleBelowPoster: Boolean = true,
+    val showQualityBadge: Boolean = true,
+    val showScoreBadge: Boolean = true,
+    val showCast: Boolean = true,
+    val showHero: Boolean = true,
+    val randomButton: Boolean = false,
+    val showClock: Boolean = false,
+    val confirmExit: Boolean = false,
+    val searchHistoryEnabled: Boolean = true,
+
+    // Général
+    /** DNS over HTTPS provider id (see `Network`), "none" uses the system DNS. */
+    val dns: String = "none",
+    val downloadDir: String? = null,
+    val parallelDownloads: Int = 2,
+
+    // Sauvegarde
+    /** Days between automatic backups, 0 disables them. */
+    val backupFrequencyDays: Int = 0,
+    val backupDir: String? = null,
+    val lastBackup: Long = 0,
+    val checkAppUpdates: Boolean = true,
+
+    // Comptes et sécurité
+    val profiles: List<Profile> = listOf(Profile()),
+    val currentProfile: String = "default",
+    val askProfileAtStartup: Boolean = false,
+    /** Code asked when the app starts. */
+    val appPin: String? = null,
+    val iptvAccounts: List<IptvAccount> = emptyList(),
+    val stremioAddons: List<StremioAddonEntry> = emptyList(),
 )
 
 /** Playback position of a movie or episode, in seconds. */
@@ -82,14 +163,48 @@ data class UserLibrary(
     val watched: Set<String> = emptySet(),
     /** Resume positions, keyed like [watched]. */
     val progress: Map<String, WatchProgress> = emptyMap(),
+    val searchHistory: List<String> = emptyList(),
 )
+
+private const val SETTINGS_VERSION = 2
 
 /** Persistent app state, observable from Compose. */
 object Store {
-    var settings by mutableStateOf(readJsonFile(AppDirs.settingsFile) { Settings() })
+    var settings by mutableStateOf(migrate(readJsonFile(AppDirs.settingsFile) { Settings() }))
         private set
-    var library by mutableStateOf(readJsonFile(AppDirs.libraryFile) { UserLibrary() })
+    var library by mutableStateOf(readJsonFile(AppDirs.libraryFile(settings.currentProfile)) { UserLibrary() })
         private set
+
+    val profile: Profile
+        get() = settings.profiles.firstOrNull { it.id == settings.currentProfile } ?: settings.profiles.first()
+
+    private fun migrate(loaded: Settings): Settings {
+        var s = loaded
+        if (s.settingsVersion < 2) {
+            // v2: the best source always plays directly, like the user asked.
+            s = s.copy(autoPlayBestSource = true)
+        }
+        if (s.profiles.isEmpty()) s = s.copy(profiles = listOf(Profile()), currentProfile = "default")
+        return s.copy(settingsVersion = SETTINGS_VERSION)
+    }
+
+    @Synchronized
+    fun switchProfile(id: String) {
+        updateSettings { it.copy(currentProfile = id) }
+        library = readJsonFile(AppDirs.libraryFile(id)) { UserLibrary() }
+    }
+
+    /** Reloads everything from disk (after restoring a backup). */
+    @Synchronized
+    fun reload() {
+        settings = migrate(readJsonFile(AppDirs.settingsFile) { Settings() })
+        library = readJsonFile(AppDirs.libraryFile(settings.currentProfile)) { UserLibrary() }
+    }
+
+    fun addSearchQuery(query: String) {
+        if (!settings.searchHistoryEnabled || query.isBlank()) return
+        updateLibrary { lib -> lib.copy(searchHistory = (listOf(query) + lib.searchHistory.filterNot { it.equals(query, true) }).take(30)) }
+    }
 
     @Synchronized
     fun updateSettings(block: (Settings) -> Settings) {
@@ -100,7 +215,7 @@ object Store {
     @Synchronized
     fun updateLibrary(block: (UserLibrary) -> UserLibrary) {
         library = block(library)
-        writeJsonFile(AppDirs.libraryFile, library)
+        writeJsonFile(AppDirs.libraryFile(settings.currentProfile), library)
     }
 
     fun isFavorite(apiName: String, url: String) =
