@@ -101,6 +101,8 @@ data class Settings(
     val showClock: Boolean = false,
     val confirmExit: Boolean = false,
     val searchHistoryEnabled: Boolean = true,
+    /** "Recommandé pour vous" rows, computed from what is watched on this computer. */
+    val recommendationsEnabled: Boolean = true,
 
     // Général
     /** DNS over HTTPS provider id (see `Network`), "none" uses the system DNS. */

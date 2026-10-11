@@ -31,6 +31,13 @@ rebours, sous-titres, langues audio/sous-titres préférées, vitesse de lecture
 **Fiches** : saisons, épisodes, VF/VOSTFR, progression, distribution, recommandations, favoris,
 téléchargement d'un film ou d'un épisode.
 
+**Recommandations** sans compte (ni Simkl ni Trakt), calculées sur le PC à partir de ce que vous
+regardez : « Recommandé pour vous » et « Parce que vous avez regardé… » sur l'accueil. Un titre fini compte
+plus qu'un titre abandonné, les favoris comptent aussi, et un titre suggéré par plusieurs de vos films passe
+devant. Quand une extension ne propose pas de titres similaires, l'application cherche le même titre dans vos
+autres fournisseurs pour en trouver. La croix au survol d'une affiche écarte un titre (« Pas intéressé »).
+Séparées par profil ; désactivables et réinitialisables dans Disposition.
+
 **Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche.
 
 **Téléchargements** : vidéos directes et flux HLS (y compris chiffrés AES-128), pause / reprise,

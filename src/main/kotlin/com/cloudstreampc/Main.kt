@@ -55,6 +55,7 @@ fun main() {
             runCatching { PluginManager.updateAll() }.onFailure { Logger.error("Mise à jour des extensions", it) }
         }
         Backup.autoBackupIfDue()
+        if (Store.settings.recommendationsEnabled) com.cloudstreampc.providers.TasteEnricher.enrichSoon()
     }
 
     application {

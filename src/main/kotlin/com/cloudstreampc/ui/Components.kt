@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -108,6 +109,8 @@ fun PosterCard(
     subtitle: String? = null,
     horizontal: Boolean = false,
     progress: Float? = null,
+    /** Shows a "Pas intéressé" cross on hover. */
+    onDismiss: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -141,7 +144,15 @@ fun PosterCard(
                 }
             }
             if (badge != null && settings.showQualityBadge) Badge(badge, Modifier.align(Alignment.TopStart).padding(7.dp))
-            if (score != null && settings.showScoreBadge) Badge(score, Modifier.align(Alignment.TopEnd).padding(7.dp), star = true)
+            if (onDismiss != null && hovered) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(6.dp).size(28.dp).clip(RoundedCornerShape(50))
+                        .background(CsColors.Badge).clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Default.Close, "Pas intéressé", tint = Color.White, modifier = Modifier.size(18.dp)) }
+            } else if (score != null && settings.showScoreBadge) {
+                Badge(score, Modifier.align(Alignment.TopEnd).padding(7.dp), star = true)
+            }
             if (!settings.titleBelowPoster) {
                 Box(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth()

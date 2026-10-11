@@ -252,11 +252,19 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
                 posterUrl = item.poster
                 plot = epg(item)
                 tags = listOf(item.category)
+                recommendations = similar(item)
             }
             IptvItem.Kind.MOVIE -> loadMovie(item, url)
             IptvItem.Kind.SERIES -> loadSeries(item, url)
         }
     }
+
+    /** Other titles of the same category, best rated first: the "Similaires" of IPTV. */
+    private suspend fun similar(item: IptvItem): List<SearchResponse> =
+        catalogOrLoad().filter { it.kind == item.kind && it.category == item.category && it.id != item.id }
+            .sortedWith(compareByDescending<IptvItem> { it.rating ?: 0.0 }.thenByDescending { it.added })
+            .take(20)
+            .map { it.toSearchResponse() }
 
     private suspend fun epg(item: IptvItem): String? {
         if (account.type != IptvType.XTREAM) return null
@@ -271,14 +279,17 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
 
     private suspend fun loadMovie(item: IptvItem, url: String): LoadResponse {
         if (account.type == IptvType.M3U) {
+            val recs = similar(item)
             return newMovieLoadResponse(item.name, url, TvType.Movie, "direct|${item.extra}") {
                 posterUrl = item.poster
                 tags = listOf(item.category)
+                recommendations = recs
             }
         }
         val info = runCatching { xtream("get_vod_info", "&vod_id=${item.id}") }.getOrNull()
         val details = info?.get("info")
         val ext = info?.get("movie_data").str("container_extension") ?: item.extra ?: "mp4"
+        val recs = similar(item)
         return newMovieLoadResponse(details.str("name") ?: item.name, url, TvType.Movie, "movie|${item.id}.$ext") {
             posterUrl = details.str("movie_image") ?: item.poster
             backgroundPosterUrl = details?.get("backdrop_path").items().firstOrNull()?.asText()
@@ -287,6 +298,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             duration = details.int("duration_secs")?.div(60)
             tags = details.str("genre")?.split(",", "/")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: listOf(item.category)
             score = (details.double("rating") ?: item.rating)?.takeIf { it > 0 }?.let { Score.from10(it) }
+            recommendations = recs
         }
     }
 
@@ -300,10 +312,15 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
                     posterUrl = ep.poster
                 }, false)
             }
-            return newTvSeriesLoadResponse(item.name, url, TvType.TvSeries, episodes) { posterUrl = item.poster }
+            val recs = similar(item)
+            return newTvSeriesLoadResponse(item.name, url, TvType.TvSeries, episodes) {
+                posterUrl = item.poster
+                recommendations = recs
+            }
         }
         val info = xtream("get_series_info", "&series_id=${item.id}")
         val details = info.get("info")
+        val recs = similar(item)
         val episodes = info.get("episodes")?.fields()?.asSequence()?.flatMap { (seasonKey, list) ->
             list.items().map { ep ->
                 val epInfo = ep.get("info")
@@ -324,6 +341,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             year = details.str("releaseDate")?.take(4)?.toIntOrNull()
             tags = details.str("genre")?.split(",", "/")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: listOf(item.category)
             score = (details.double("rating") ?: item.rating)?.takeIf { it > 0 }?.let { Score.from10(it) }
+            recommendations = recs
         }
     }
 

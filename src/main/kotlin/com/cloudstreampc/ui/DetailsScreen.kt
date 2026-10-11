@@ -276,6 +276,8 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                             val favorite = Store.isFavorite(data.apiName, data.url)
                             FilledTonalButton(onClick = {
                                 Store.toggleFavorite(saved)
+                                com.cloudstreampc.core.Taste.recordFavorite(data, added = !favorite)
+                                com.cloudstreampc.providers.TasteEnricher.enrichSoon()
                                 nav.toast(if (favorite) "Retiré des favoris" else "Ajouté aux favoris")
                             }) {
                                 Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null)

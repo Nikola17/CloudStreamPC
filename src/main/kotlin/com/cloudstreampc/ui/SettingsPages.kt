@@ -244,6 +244,19 @@ fun LayoutSettings() {
     SettingsSwitch("Afficher la distribution", "Sur la fiche des films et séries", s.showCast) { v -> Store.updateSettings { it.copy(showCast = v) } }
     SettingsSwitch("Bouton aléatoire", "Ouvre un titre au hasard depuis l'accueil", s.randomButton) { v -> Store.updateSettings { it.copy(randomButton = v) } }
     SettingsSwitch("Afficher l'horloge", null, s.showClock) { v -> Store.updateSettings { it.copy(showClock = v) } }
+
+    SettingsCategory("Recommandations")
+    SettingsSwitch(
+        "Recommandations sur l'accueil",
+        "« Recommandé pour vous » et « Parce que vous avez regardé… », calculés sur ce PC à partir de ce que vous regardez",
+        s.recommendationsEnabled,
+    ) { v -> Store.updateSettings { it.copy(recommendationsEnabled = v) } }
+    val nav = LocalNavigator.current
+    val seeds = com.cloudstreampc.core.Taste.current().seeds.size
+    SettingsItem("Effacer les goûts enregistrés", "$seeds titre(s) pris en compte pour ce profil") {
+        com.cloudstreampc.core.Taste.reset()
+        nav.toast("Recommandations réinitialisées")
+    }
     SettingsSwitch("Historique de recherche", null, s.searchHistoryEnabled) { v -> Store.updateSettings { it.copy(searchHistoryEnabled = v) } }
     SettingsSwitch("Confirmer avant de quitter", null, s.confirmExit) { v -> Store.updateSettings { it.copy(confirmExit = v) } }
 }

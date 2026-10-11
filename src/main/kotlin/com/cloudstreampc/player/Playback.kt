@@ -86,6 +86,10 @@ object PlaybackManager {
         pending = null
         nextUp = null
         Store.addHistory(request.savedItem, playable.label, playable.data)
+        runCatching {
+            com.cloudstreampc.core.Taste.recordPlay(request.response)
+            com.cloudstreampc.providers.TasteEnricher.enrichSoon()
+        }
         val session = NowPlaying(request, link.name)
         nowPlaying = session
 
@@ -114,6 +118,7 @@ object PlaybackManager {
             }
             val exitCode = process.waitFor()
             save()
+            runCatching { com.cloudstreampc.core.Taste.recordOutcome(request.response, position, duration) }
             if (nowPlaying?.request === request) nowPlaying = null
 
             // mpv gave up right away (dead link, 403...): offer the other sources again.

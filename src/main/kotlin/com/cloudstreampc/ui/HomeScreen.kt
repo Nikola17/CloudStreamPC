@@ -3,6 +3,8 @@ package com.cloudstreampc.ui
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -166,11 +168,13 @@ fun HomeScreen() {
         when {
             ordered.isEmpty() && HomeState.loading -> Column {
                 ContinueWatchingRow(continueWatching)
+                RecommendationRows()
                 LoadingBox("Chargement de ${selected.name}…")
             }
-            ordered.isEmpty() && HomeState.error != null -> Column {
+            ordered.isEmpty() && HomeState.error != null -> Column(Modifier.verticalScroll(rememberScrollState())) {
                 ContinueWatchingRow(continueWatching)
-                MessageBox("Impossible de charger ${selected.name}", HomeState.error) {
+                RecommendationRows()
+                MessageBox("Impossible de charger ${selected.name}", HomeState.error, Modifier.fillMaxWidth().height(260.dp)) {
                     FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") }
                 }
             }
@@ -182,6 +186,7 @@ fun HomeScreen() {
                     item(key = "top") { Spacer(Modifier.height(16.dp)) }
                 }
                 item(key = "continue") { ContinueWatchingRow(continueWatching) }
+                item(key = "recommendations") { RecommendationRows() }
                 items(ordered, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
                     val page = selected.mainPage.getOrNull(index)
                     PosterRow(

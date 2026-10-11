@@ -51,7 +51,14 @@ class StremioAddon(val manifestUrl: String, val manifest: JsonNode) {
         return (types.isEmpty() || type in types) && (prefixes.isEmpty() || prefixes.any { id.startsWith(it) })
     }
 
-    data class Catalog(val type: String, val id: String, val name: String, val searchable: Boolean, val requiresExtra: Boolean)
+    data class Catalog(
+        val type: String,
+        val id: String,
+        val name: String,
+        val searchable: Boolean,
+        val requiresExtra: Boolean,
+        val genres: Boolean = false,
+    )
 
     val catalogs: List<Catalog> = manifest.get("catalogs").items().map { cat ->
         val extras = cat.get("extra").items()
@@ -59,7 +66,8 @@ class StremioAddon(val manifestUrl: String, val manifest: JsonNode) {
         val searchable = extras.any { it.str("name") == "search" } ||
             cat.get("extraSupported").items().any { it.asText() == "search" }
         val requires = extras.any { it.get("isRequired")?.asBoolean() == true } || legacyRequired.isNotEmpty()
-        Catalog(cat.str("type") ?: "movie", cat.str("id") ?: "", cat.str("name") ?: name, searchable, requires)
+        val genres = extras.any { it.str("name") == "genre" } || cat.get("genres").items().isNotEmpty()
+        Catalog(cat.str("type") ?: "movie", cat.str("id") ?: "", cat.str("name") ?: name, searchable, requires, genres)
     }
 
     suspend fun get(path: String): JsonNode = mapper.readTree(app.get("$base/$path", timeout = 30).text)
@@ -170,6 +178,7 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         val rating = meta.double("imdbRating")?.takeIf { it > 0 }?.let { Score.from10(it) }
         val runtime = meta.str("runtime")?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() }
         val videos = meta.get("videos").items()
+        val recs = similar(type, id, genres, preferred)
 
         return when {
             tvType(type) == TvType.Live -> newLiveStreamLoadResponse(title, url, "$type|$id") {
@@ -178,6 +187,7 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
             videos.isEmpty() || type == "movie" -> newMovieLoadResponse(title, url, tvType(type), "$type|$id") {
                 posterUrl = poster; backgroundPosterUrl = background; plot = description
                 this.year = year; tags = genres; score = rating; duration = runtime
+                recommendations = recs
             }
             else -> {
                 val episodes = videos.sortedWith(compareBy({ it.int("season") ?: 0 }, { it.int("episode") ?: it.int("number") ?: 0 }))
@@ -194,9 +204,24 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
                 newTvSeriesLoadResponse(title, url, tvType(type), episodes) {
                     posterUrl = poster; backgroundPosterUrl = background; plot = description
                     this.year = year; tags = genres; score = rating
+                    recommendations = recs
                 }
             }
         }
+    }
+
+    /** Titles of the same genre from a catalog that can filter by genre (e.g. Cinemeta). */
+    private suspend fun similar(type: String, id: String, genres: List<String>, preferred: StremioAddon?): List<SearchResponse> {
+        val genre = genres.firstOrNull() ?: return emptyList()
+        val sources = listOfNotNull(preferred) + addons.filter { it != preferred }
+        for (addon in sources) {
+            val catalog = addon.catalogs.firstOrNull { it.type == type && it.genres } ?: continue
+            val metas = runCatching {
+                addon.get("catalog/$type/${catalog.id}/genre=${IptvProvider.enc(genre)}.json").get("metas").items()
+            }.getOrNull() ?: continue
+            return metas.filter { it.str("id") != id }.take(20).mapNotNull { it.toSearchResponse(addon) }
+        }
+        return emptyList()
     }
 
     override suspend fun loadLinks(
