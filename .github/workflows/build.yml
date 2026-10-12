@@ -141,7 +141,11 @@ jobs:
         run: |
           $v = "${{ steps.version.outputs.version }}"
           $suffix = if ("${{ matrix.arch }}" -eq "arm64") { "-arm64" } else { "" }
-          Compress-Archive -CompressionLevel Optimal -Path build/compose/binaries/main-release/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v$suffix-portable.zip"
+          # 7-Zip's Deflate at its strongest (still a plain zip that Windows opens): smaller than Compress-Archive.
+          Push-Location build/compose/binaries/main-release/app
+          7z a -tzip -mx=9 -mm=Deflate -mfb=258 -mpass=15 "$env:GITHUB_WORKSPACE/dist/CloudStreamPC-$v$suffix-portable.zip" CloudStreamPC | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7-Zip a échoué" }
+          Pop-Location
           Get-ChildItem dist | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
