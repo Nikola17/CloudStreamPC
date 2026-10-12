@@ -46,7 +46,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +108,8 @@ object HomeState {
     val sections = mutableStateMapOf<Int, List<HomePageList>>()
     var tab by mutableStateOf(HomeTab.All)
     val failedSections = mutableStateListOf<String>()
+    /** Cinema mode: only the banner and its trailers, full window, no menus. */
+    var cinema by mutableStateOf(false)
 
     suspend fun load(api: MainAPI) = coroutineScope {
         loadedFor = api.name
@@ -180,6 +181,7 @@ fun HomeScreen() {
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * 0.76f).coerceIn(460.dp, 780.dp)
+        val fullHeight = maxHeight
         when {
             ordered.isEmpty() && HomeState.loading -> Column {
                 Box(Modifier.fillMaxWidth().height(heroHeight * 0.6f).background(Brush.verticalGradient(listOf(CsColors.Surface, CsColors.Background))))
@@ -192,13 +194,21 @@ fun HomeScreen() {
                     FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") }
                 }
             }
+            HomeState.cinema && visible.isNotEmpty() -> Box(Modifier.fillMaxSize()) {
+                val featured = visible.firstOrNull { !it.second.isHorizontalImages }?.second?.list?.take(10).orEmpty()
+                if (featured.isNotEmpty()) HeroCarousel(selected, featured, fullHeight)
+                androidx.compose.material3.TextButton(
+                    onClick = { HomeState.cinema = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+                ) { Text("Quitter le mode cinéma (Échap)", color = Color.White.copy(alpha = 0.7f)) }
+            }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
                 val featured = visible.firstOrNull { !it.second.isHorizontalImages }?.second?.list?.take(6).orEmpty()
                 item(key = "hero") {
                     if (Store.settings.showHero && featured.isNotEmpty()) {
                         Box {
                             HeroCarousel(selected, featured, heroHeight)
-                            HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp), onGuide = guide) { HomeState.tab = it }
+                            HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp), onGuide = guide, onCinema = { HomeState.cinema = true }) { HomeState.tab = it }
                         }
                     } else {
                         HomeTabs(tabs, tab, Modifier.padding(start = HomeInset, top = 30.dp, bottom = 24.dp), onGuide = guide) { HomeState.tab = it }
@@ -232,7 +242,7 @@ fun HomeScreen() {
         if (Store.settings.showClock) Clock(Modifier.align(Alignment.TopEnd).padding(24.dp))
 
         // Floating buttons, bottom right: random title and provider filter (like the app).
-        Column(
+        if (!HomeState.cinema) Column(
             Modifier.align(Alignment.BottomEnd).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

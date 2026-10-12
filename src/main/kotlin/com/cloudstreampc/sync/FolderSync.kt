@@ -97,9 +97,10 @@ object FolderSync {
     /** Same synced data, whatever the order and the local-only fields (new episodes, dates). */
     fun sameContent(a: UserLibrary, b: UserLibrary): Boolean {
         fun normalized(lib: UserLibrary) = lib.copy(
-            favorites = emptyList(), searchHistory = emptyList(), newEpisodes = emptyList(), modifiedAt = 0,
+            favorites = emptyList(), searchHistory = emptyList(), newEpisodes = emptyList(), modifiedAt = 0, collections = emptyList(),
         )
         return normalized(a) == normalized(b) && a.favorites.toSet() == b.favorites.toSet() &&
+            a.collections.toSet() == b.collections.toSet() &&
             a.searchHistory.map { it.lowercase() }.toSet() == b.searchHistory.map { it.lowercase() }.toSet()
     }
 
@@ -138,6 +139,12 @@ object FolderSync {
             searchHistory = (local.searchHistory + remote.searchHistory).distinctBy { it.lowercase() }.take(30),
             episodeSnapshots = snapshots,
             preferredSources = remote.preferredSources + local.preferredSources,
+            collectionsRemoved = maxMerge(local.collectionsRemoved, remote.collectionsRemoved),
+            // Per collection, the last modified version wins; deleted ones stay deleted.
+            collections = (local.collections + remote.collections).groupBy { it.id }
+                .map { (_, versions) -> versions.maxBy { it.modifiedAt } }
+                .filter { it.modifiedAt > (maxMerge(local.collectionsRemoved, remote.collectionsRemoved)[it.id] ?: -1) }
+                .sortedBy { c -> local.collections.indexOfFirst { it.id == c.id }.let { if (it < 0) Int.MAX_VALUE else it } },
             modifiedAt = maxOf(local.modifiedAt, remote.modifiedAt),
         )
     }

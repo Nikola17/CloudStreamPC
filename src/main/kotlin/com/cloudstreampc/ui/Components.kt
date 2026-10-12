@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -115,7 +115,7 @@ fun PosterCard(
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     val settings = Store.settings
     val width = if (horizontal) posterWidth * 1.45f else posterWidth
     val shape = RoundedCornerShape(8.dp)
@@ -274,4 +274,12 @@ fun formatBytes(bytes: Long): String = when {
     bytes >= 1L shl 20 -> "%.1f Mo".format(bytes / (1L shl 20).toDouble())
     bytes >= 1L shl 10 -> "%.0f Ko".format(bytes / (1L shl 10).toDouble())
     else -> "$bytes o"
+}
+
+/** Hovered with the mouse or selected with the keyboard / gamepad: both get the same highlight. */
+@Composable
+fun androidx.compose.foundation.interaction.InteractionSource.collectIsActiveAsState(): androidx.compose.runtime.State<Boolean> {
+    val hovered = collectIsHoveredAsState()
+    val focused = collectIsFocusedAsState()
+    return remember { androidx.compose.runtime.derivedStateOf { hovered.value || focused.value } }
 }

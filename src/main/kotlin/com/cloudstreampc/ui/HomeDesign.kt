@@ -61,7 +61,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -114,7 +113,7 @@ fun MediaRow(
     content: LazyListScope.() -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth().padding(bottom = 30.dp).hoverable(interaction)) {
@@ -212,7 +211,7 @@ private fun ContinueCard(entry: HistoryEntry) {
     val nav = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     val api = PluginManager.providers.firstOrNull { it.name == entry.item.apiName }
     var details by remember(entry.item.url) { mutableStateOf(DetailsCache.cached(entry.item.apiName, entry.item.url)) }
     LaunchedEffect(entry.item.url) {
@@ -276,7 +275,7 @@ private fun ContinueCard(entry: HistoryEntry) {
 fun HeroCarousel(api: MainAPI, items: List<SearchResponse>, height: Dp) {
     val nav = LocalNavigator.current
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     var index by remember(items) { mutableIntStateOf(0) }
     val item = items[index % items.size]
     var details by remember(item.url) { mutableStateOf(DetailsCache.cached(api.name, item.url)) }
@@ -441,7 +440,7 @@ private fun HeroTitle(name: String) {
 @Composable
 private fun HeroButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, primary: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     Row(
         Modifier.height(48.dp).clip(RoundedCornerShape(6.dp))
             .background(
@@ -472,7 +471,7 @@ fun typeLabel(type: TvType?): String? = when (type) {
     TvType.AsianDrama -> "DRAMA"
     TvType.Live -> "EN DIRECT"
     else -> null
-}
+}?.let(I18n::tr)
 
 /** Tabs over the hero to keep only the rows of one kind, like the platforms' top menu. */
 enum class HomeTab(val label: String, val types: Set<TvType>?) {
@@ -489,13 +488,14 @@ fun HomeTabs(
     selected: HomeTab,
     modifier: Modifier = Modifier,
     onGuide: (() -> Unit)? = null,
+    onCinema: (() -> Unit)? = null,
     onSelect: (HomeTab) -> Unit,
 ) {
     if (available.size < 2 && onGuide == null) return
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
         available.forEach { tab ->
             val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
+            val hovered by interaction.collectIsActiveAsState()
             Column(
                 Modifier.hoverable(interaction).clickable(interaction, indication = null) { onSelect(tab) },
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -514,9 +514,24 @@ fun HomeTabs(
                 Box(Modifier.width(22.dp).height(2.dp).background(if (tab == selected) CsColors.Primary else Color.Transparent))
             }
         }
+        if (onCinema != null) {
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsActiveAsState()
+            Row(
+                Modifier.padding(bottom = 7.dp).clip(RoundedCornerShape(50)).hoverable(interaction)
+                    .background(Color.White.copy(alpha = if (hovered) 0.22f else 0.12f))
+                    .clickable(interaction, indication = null, onClick = onCinema)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(AppIcons.Fullscreen, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Mode cinéma", style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp), fontWeight = FontWeight.SemiBold, color = Color.White)
+            }
+        }
         if (onGuide != null) {
             val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
+            val hovered by interaction.collectIsActiveAsState()
             Row(
                 Modifier.padding(bottom = 7.dp).clip(RoundedCornerShape(50)).hoverable(interaction)
                     .background(Color.White.copy(alpha = if (hovered) 0.22f else 0.12f))

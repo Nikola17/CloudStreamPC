@@ -57,17 +57,35 @@ object CsColors {
         get() = when (Store.settings.theme) {
             "dark" -> Color(0xFF111111)
             "gray" -> Color(0xFF1C1C1E)
+            "navy" -> Color(0xFF070B17)
+            "wine" -> Color(0xFF120709)
+            "forest" -> Color(0xFF06100B)
             else -> Color(0xFF000000)
         }
     val Sidebar: Color
         get() = when (Store.settings.theme) {
             "gray" -> Color(0xFF26262A)
+            "navy" -> Color(0xFF0E1527)
+            "wine" -> Color(0xFF1E0E12)
+            "forest" -> Color(0xFF0D1A13)
             else -> Color(0xFF1A1A1A)
         }
     val Surface: Color
-        get() = if (Store.settings.theme == "gray") Color(0xFF2A2A2E) else Color(0xFF1C1C1E)
+        get() = when (Store.settings.theme) {
+            "gray" -> Color(0xFF2A2A2E)
+            "navy" -> Color(0xFF131C33)
+            "wine" -> Color(0xFF26131A)
+            "forest" -> Color(0xFF13241B)
+            else -> Color(0xFF1C1C1E)
+        }
     val SurfaceHigh: Color
-        get() = if (Store.settings.theme == "gray") Color(0xFF34343A) else Color(0xFF26262A)
+        get() = when (Store.settings.theme) {
+            "gray" -> Color(0xFF34343A)
+            "navy" -> Color(0xFF1C2744)
+            "wine" -> Color(0xFF331A22)
+            "forest" -> Color(0xFF1B3024)
+            else -> Color(0xFF26262A)
+        }
     val TextMuted = Color(0xFFA0A0A8)
     val Good = Color(0xFF4CAF50)
     val Error = Color(0xFFE5484D)

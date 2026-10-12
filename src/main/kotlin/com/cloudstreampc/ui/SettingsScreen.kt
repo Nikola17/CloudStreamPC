@@ -32,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,7 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "2.4.0"
+const val APP_VERSION = "2.5.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
@@ -84,7 +83,7 @@ fun SettingsScreen() {
 @Composable
 private fun CategoryRow(title: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
             .background(if (hovered) Color.White.copy(alpha = 0.06f) else Color.Transparent)
@@ -151,7 +150,7 @@ fun SettingsItem(
     onClick: (() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
             .background(if (hovered && onClick != null) Color.White.copy(alpha = 0.06f) else Color.Transparent)

@@ -41,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -110,7 +109,7 @@ private fun TvType.label() = when (this) {
     TvType.AsianDrama -> "Drama"
     TvType.Live -> "Direct"
     else -> name
-}
+}.let(I18n::tr)
 
 private fun DubStatus.label() = when (this) {
     DubStatus.Dubbed -> "Doublé (VF)"
@@ -178,6 +177,11 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     // Everything playable from this page, in order, so the next episode can follow.
     val queue: List<Playable> = PlayQueue.build(data, episodes)
 
+    // Cinemeta (and TMDB with a key): rating, director, cast photos, similar titles, episode pictures.
+    var enriched by remember(data) { mutableStateOf<com.cloudstreampc.providers.Enriched?>(null) }
+    LaunchedEffect(data) { enriched = runCatching { com.cloudstreampc.providers.Enrichment.of(data) }.getOrNull() }
+    var showCollections by remember(data) { mutableStateOf(false) }
+    if (showCollections) CollectionsDialog(saved) { showCollections = false }
     var castIndex by remember(data) { mutableStateOf<Int?>(null) }
     castIndex?.let { index ->
         if (index in queue.indices) CastDialog(PlayRequest(api, data, queue, index)) { castIndex = null }
@@ -220,7 +224,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Box(Modifier.fillMaxWidth()) {
-                val backdrop = data.backgroundPosterUrl ?: data.posterUrl
+                val backdrop = data.backgroundPosterUrl ?: enriched?.background ?: data.posterUrl
                 RemoteImage(
                     backdrop, Modifier.fillMaxWidth().height(420.dp), data.posterHeaders,
                     placeholder = { Box(Modifier.fillMaxWidth().height(420.dp).background(CsColors.Surface)) },
@@ -253,13 +257,27 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                 Text(" %.1f   ".format(score.toDouble(10)), fontWeight = FontWeight.SemiBold)
                             }
                             Text(meta.joinToString("  ·  "), color = CsColors.TextMuted)
+                            enriched?.imdbRating?.let {
+                                Text(
+                                    "IMDb $it", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black,
+                                    modifier = Modifier.padding(start = 12.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFF5C518))
+                                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                        enriched?.directors?.takeIf { it.isNotEmpty() }?.let {
+                            Text(I18n.tr("Réalisation : ") + it.joinToString(", "), color = CsColors.TextMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                         }
                         if (!data.tags.isNullOrEmpty()) {
                             FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 data.tags!!.take(8).forEach { AssistChip(onClick = {}, label = { Text(it, fontSize = 12.sp) }) }
                             }
                         }
-                        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FlowRow(
+                            Modifier.padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
                             // Last episode launched; once it is watched, the next one is proposed.
                             val mainIndex = PlayQueue.startIndex(data, queue)
                             if (mainIndex >= 0) {
@@ -316,6 +334,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                 Spacer(Modifier.width(6.dp))
                                 Text(if (favorite) "Favori" else "Ajouter aux favoris")
                             }
+                            FilledTonalButton(onClick = { showCollections = true }) { Text("Collections") }
                             TextButton(onClick = { openInBrowser(data.url) }) {
                                 Icon(AppIcons.OpenInBrowser, null)
                                 Spacer(Modifier.width(6.dp))
@@ -325,12 +344,12 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                         if (data is TorrentLoadResponse && !com.cloudstreampc.player.TorrentEngine.available) {
                             Text("Moteur torrent indisponible : activez les torrents dans Paramètres → Lecteur.", color = CsColors.Error, modifier = Modifier.padding(top = 8.dp))
                         }
-                        data.plot?.takeIf { it.isNotBlank() }?.let {
+                        (data.plot?.takeIf { it.isNotBlank() } ?: enriched?.overview)?.let {
                             Text(it, modifier = Modifier.padding(top = 16.dp).widthIn(max = 900.dp), color = Color(0xFFDDDDDD), lineHeight = 22.sp)
                         }
-                        data.actors?.takeIf { it.isNotEmpty() && Store.settings.showCast }?.let { actors ->
+                        if (enriched?.cast?.any { it.photo != null } != true) data.actors?.takeIf { it.isNotEmpty() && Store.settings.showCast }?.let { actors ->
                             Text(
-                                "Avec : " + actors.take(10).joinToString(", ") { it.actor.name },
+                                I18n.tr("Avec : ") + actors.take(10).joinToString(", ") { it.actor.name },
                                 color = CsColors.TextMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp),
                                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                             )
@@ -367,6 +386,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                     watched = watched,
                     progress = Store.progressOf(data.apiName, ep.data)?.fraction,
                     current = lastWatched?.episodeData == ep.data,
+                    extra = enriched?.episode(ep.season, ep.episode ?: (index + 1)),
                     downloaded = DownloadManager.find(data.apiName, ep.data) != null,
                     onToggleWatched = {
                         Store.setWatched(data.apiName, ep.data, !watched)
@@ -377,10 +397,32 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
             }
         }
 
+        enriched?.cast?.takeIf { it.any { p -> p.photo != null } && Store.settings.showCast }?.let { cast ->
+            item(key = "cast") {
+                Spacer(Modifier.height(24.dp))
+                MediaRow("Distribution") {
+                    items(cast.size, key = { "person:$it" }) { i -> PersonCard(cast[i]) }
+                }
+            }
+        }
         data.recommendations?.takeIf { it.isNotEmpty() }?.let { recs ->
             item {
                 Spacer(Modifier.height(24.dp))
                 PosterRow("Recommandations", recs, onOpen = nav::open)
+            }
+        }
+        enriched?.similar?.takeIf { it.isNotEmpty() }?.let { similar ->
+            item(key = "similar") {
+                MediaRow("Titres similaires") {
+                    items(similar.size, key = { "similar:$it" }) { i ->
+                        val title = similar[i]
+                        PosterCard(title.title, title.posterUrl, subtitle = title.year?.toString()) {
+                            SearchState.query = title.title
+                            SearchState.pendingSearch = true
+                            nav.select(Tab.Search)
+                        }
+                    }
+                }
             }
         }
     }
@@ -394,13 +436,14 @@ private fun EpisodeRow(
     watched: Boolean,
     progress: Float?,
     current: Boolean,
+    extra: com.cloudstreampc.providers.EpisodeExtra?,
     downloaded: Boolean,
     onToggleWatched: () -> Unit,
     onDownload: () -> Unit,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+    val hovered by interaction.collectIsActiveAsState()
     Row(
         Modifier
             .fillMaxWidth()
@@ -408,13 +451,13 @@ private fun EpisodeRow(
             .clip(RoundedCornerShape(10.dp))
             .background(if (hovered) CsColors.SurfaceHigh else if (current) CsColors.Surface else Color.Transparent)
             .hoverable(interaction)
-            .clickable(onClick = onClick)
+            .clickable(interaction, indication = null, onClick = onClick)
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(8.dp)).background(CsColors.SurfaceHigh), contentAlignment = Alignment.Center) {
-            if (ep.posterUrl != null) RemoteImage(ep.posterUrl, Modifier.fillMaxSize())
+            (ep.posterUrl ?: extra?.thumbnail)?.let { RemoteImage(it, Modifier.fillMaxSize()) }
             Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(alpha = if (hovered) 1f else 0.7f), modifier = Modifier.size(36.dp))
             if (progress != null) {
                 LinearProgressIndicator(
@@ -429,7 +472,7 @@ private fun EpisodeRow(
         }
         Column(Modifier.weight(1f)) {
             Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            ep.description?.takeIf { it.isNotBlank() }?.let {
+            (ep.description?.takeIf { it.isNotBlank() } ?: extra?.overview)?.let {
                 Text(it, color = CsColors.TextMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             ep.runTime?.let { Text("$it min", color = CsColors.TextMuted, fontSize = 12.sp) }
@@ -453,4 +496,21 @@ private fun EpisodeRow(
 
 fun openInBrowser(url: String) {
     runCatching { Desktop.getDesktop().browse(URI(url)) }
+}
+
+@Composable
+private fun PersonCard(person: com.cloudstreampc.providers.Person) {
+    Column(Modifier.width(110.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(96.dp).clip(androidx.compose.foundation.shape.CircleShape).background(CsColors.SurfaceHigh), contentAlignment = Alignment.Center) {
+            RemoteImage(person.photo, Modifier.fillMaxSize()) {
+                Text(person.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""), color = CsColors.TextMuted, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(person.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        person.role?.let {
+            Text(it, fontSize = 12.sp, color = CsColors.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
 }

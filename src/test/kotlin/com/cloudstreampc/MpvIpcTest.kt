@@ -42,11 +42,14 @@ class MpvIpcTest {
         ).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
 
         val messages = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val observing = java.util.concurrent.CountDownLatch(1)
         val observer = Thread {
             MpvIpc.observe(path, process, onEvent = { name, args ->
                 if (name == "client-message") messages += args.joinToString(" ")
-            }) { _, _ -> }
+            }) { _, _ -> observing.countDown() }
         }.apply { start() }
+        // Events only reach clients already connected: wait for the observer's first update.
+        assertTrue(observing.await(15, java.util.concurrent.TimeUnit.SECONDS), "observer never connected")
 
         // "Épisode suivant" asked from the player (as the button or the N key would).
         assertTrue(MpvIpc.toScript(path, "next"))

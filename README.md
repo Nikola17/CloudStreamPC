@@ -75,7 +75,23 @@ sans le son, comme sur les plateformes ; bouton « Bande-annonce » (avec le son
 vient de l'extension ou du catalogue Cinemeta, lue depuis YouTube grâce à [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
 **Fiches** : saisons, épisodes, VF/VOSTFR, progression, distribution, recommandations, favoris,
-téléchargement d'un film ou d'un épisode.
+téléchargement d'un film ou d'un épisode. Elles sont complétées par le catalogue Cinemeta (note IMDb, réalisateur, images
+des épisodes) et, avec une clé TMDB gratuite (Paramètres → Fournisseurs), par la distribution avec photos, les
+titres similaires et les résumés d'épisodes en français.
+
+**Bibliothèque** : « Ma liste » (le « + » des affiches et de la bannière), historique, nouveaux épisodes, listes
+de suivi et **collections** à vous (« Soirée SF », « À voir avec les enfants »… : bouton « Collections » des
+fiches), avec tri (ajout récent, titre, année) et filtre (films, séries, animés).
+
+**Clavier et manette** : toute l'application se parcourt avec les flèches, `Entrée` et `Échap` (l'élément
+sélectionné est entouré). Une manette Xbox, PlayStation ou autre fait de même : croix ou stick pour se déplacer,
+A pour ouvrir, B pour revenir, X pour pause, Y pour le plein écran, gâchettes hautes pour avancer ou reculer.
+
+**Mode cinéma** (bouton de l'accueil) : la bannière et ses bandes-annonces en plein cadre, sans la barre latérale.
+
+**Thèmes** : noir (AMOLED), sombre, gris, bleu nuit, bordeaux et forêt, avec la couleur principale au choix.
+
+**English** : Settings → General → App language switches the interface to English.
 
 **Suivi** (Paramètres → Comptes et Sécurité → Suivi et synchronisation) : les épisodes et films vus jusqu'au
 bout sont envoyés à **AniList** et **MyAnimeList** (animés) et à **Simkl** et **Trakt** (tout). La liste « en cours /
@@ -104,7 +120,9 @@ menu des sous-titres du lecteur. Décalage des sous-titres dans mpv : `z` / `x`.
 **Discord** (Paramètres → Général) : affiche le titre et l'épisode en cours sur votre profil Discord ; il faut
 l'identifiant d'une application Discord créée une fois sur le portail développeur.
 
-**Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche.
+**Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche. Par défaut, un
+même titre trouvé chez plusieurs fournisseurs n'apparaît qu'une fois (« 2 sources ») ; « Par fournisseur »
+affiche les résultats rangée par rangée.
 
 **Téléchargements** : vidéos directes et flux HLS (y compris chiffrés AES-128), pause / reprise,
 téléchargements simultanés, lecture hors connexion.
@@ -118,13 +136,13 @@ chaînes TV (guide des programmes), films et séries, rangés par catégorie, et
 Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisseurs.
 
 **Paramètres** (mêmes rubriques que l'application Android) :
-- *Général* : dossier et nombre de téléchargements, nouveaux épisodes et notifications, **DNS over HTTPS**
+- *Général* : langue (français, anglais), dossier et nombre de téléchargements, manette, Discord, nouveaux épisodes et notifications, **DNS over HTTPS**
   (Cloudflare, Google, AdGuard, Quad9…) contre les blocages des fournisseurs d'accès, liens.
 - *Lecteur* : qualité préférée, lecteur (mpv inclus, VLC, autre), lecture directe, épisode suivant,
   progression, plein écran, vitesse, interface du lecteur, « Passer l'intro » (manuel ou automatique),
   bouton « +85 s », sous-titres, langues, cache.
-- *Fournisseurs* : langues des extensions, média préféré, badges VF/VOSTFR, NSFW, test de toutes les extensions.
-- *Disposition* : couleur principale, thème (noir, sombre, gris), taille des affiches, position du
+- *Fournisseurs* : langues des extensions, média préféré, badges VF/VOSTFR, NSFW, test de toutes les extensions, clé TMDB.
+- *Disposition* : couleur principale, thème (noir, sombre, gris, bleu nuit, bordeaux, forêt), taille des affiches, position du
   titre, badges, bannière, bandes-annonces, distribution, bouton aléatoire, horloge, historique, confirmation avant de quitter.
 - *Mises à jour et Sauvegarde* : vérification des mises à jour, sauvegarde / restauration (manuelle
   ou automatique), mise à jour des extensions, journaux, configuration initiale.
@@ -132,7 +150,8 @@ Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisse
   « Qui regarde ? » au démarrage), comptes IPTV, addons Stremio, verrouillage de l'application par code.
 - *Extensions* : dépôts et extensions CloudStream (installation, mise à jour, désinstallation) et addons Stremio.
 
-Raccourcis : `Échap`, `Alt+←` ou le bouton « précédent » de la souris pour revenir en arrière.
+Raccourcis : flèches et `Entrée` pour se déplacer et ouvrir ; `Échap`, `Alt+←` ou le bouton « précédent » de la
+souris pour revenir en arrière.
 Dans mpv : `Espace` pause, `F` plein écran, `←`/`→` ±5 s, `↑`/`↓` ±1 min, `J` sous-titres, `#` piste audio,
 `Entrée` « Passer l'intro » / « Épisode suivant » quand le bouton est affiché, `N` épisode suivant, `Q` quitter.
 
@@ -168,6 +187,7 @@ de signature avec un certificat jetable (sans publier de version).
 - Le guide TV dépend du guide XMLTV fourni par le compte IPTV ; les chaînes des extensions n'en ont pas.
 - « Passer l'intro » n'est automatique que pour les animés présents dans AniSkip et les vidéos à chapitres ;
   ailleurs, le bouton « +85 s » de la barre de contrôle avance d'un générique type.
+- L'anglais traduit l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
 - Les bandes-annonces passent par YouTube : si YouTube change, une mise à jour de yt-dlp (incluse dans
   la version suivante) peut être nécessaire.
 
@@ -189,7 +209,7 @@ de signature avec un certificat jetable (sans publier de version).
 
 [mpv](https://mpv.io) (GPL), [uosc](https://github.com/tomasklaen/uosc) 5.9.2 (LGPL-2.1, non modifié),
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
-[JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), polices Outfit et Inter (SIL OFL), bibliothèque
+[JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), [Jamepad](https://github.com/libgdx/Jamepad) et SDL2 (Apache-2.0 / zlib), polices Outfit et Inter (SIL OFL), bibliothèque
 CloudStream (GPL-3.0).
 
 ## Compiler soi-même

@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -59,7 +58,9 @@ fun GeneralSettings() {
     val s = Store.settings
     var legal by remember { mutableStateOf(false) }
     SettingsCategory("Général")
-    SettingsItem("Langue de l'application", "Français")
+    SettingsChoice("Langue de l'application", I18n.languages, s.language) { v ->
+        Store.updateSettings { it.copy(language = v) }
+    }
     SettingsItem("Mention légale", "CloudStreamPC n'héberge aucun contenu") { legal = true }
 
     SettingsCategory("Téléchargements")
@@ -80,6 +81,13 @@ fun GeneralSettings() {
     SettingsSwitch("Notifications Windows", "Prévient quand un nouvel épisode est disponible", s.newEpisodeNotifications) { v ->
         Store.updateSettings { it.copy(newEpisodeNotifications = v) }
     }
+
+    SettingsCategory("Manette et clavier")
+    SettingsSwitch(
+        "Manette de jeu",
+        "Xbox, PlayStation… : croix directionnelle pour se déplacer, A pour ouvrir, B pour revenir, X pour pause",
+        s.gamepadEnabled,
+    ) { v -> Store.updateSettings { it.copy(gamepadEnabled = v) } }
 
     SettingsCategory("Discord")
     SettingsSwitch(
@@ -218,6 +226,18 @@ fun ProviderSettings() {
         s.preferredMedia,
     ) { v -> Store.updateSettings { it.copy(preferredMedia = v) } }
     SettingsSwitch("Afficher doublé / sous-titré", "Badge VF / VOSTFR sur les animés", s.showDubSubBadge) { v -> Store.updateSettings { it.copy(showDubSubBadge = v) } }
+
+    SettingsCategory("Fiches détaillées")
+    SettingsText(
+        "Clé API TMDB (facultative)",
+        s.tmdbApiKey,
+        placeholder = "Non renseignée",
+        subtitle = if (s.tmdbApiKey.isBlank()) "Ajoute la distribution avec photos, les titres similaires et les résumés d'épisodes en français. " +
+            "Gratuit : themoviedb.org → Paramètres → API" else "Renseignée",
+    ) { v ->
+        Store.updateSettings { it.copy(tmdbApiKey = v.trim()) }
+        com.cloudstreampc.providers.Enrichment.clear()
+    }
     SettingsSwitch("Activer le contenu NSFW", "Sur les extensions qui en proposent", s.nsfw) { v -> Store.updateSettings { it.copy(nsfw = v) } }
     SettingsItem("Tester toutes les extensions", "Lance une recherche sur chaque fournisseur") { testing = true }
     if (testing) ProviderTestDialog { testing = false }
@@ -285,7 +305,11 @@ fun LayoutSettings() {
             )
         }
     }
-    SettingsChoice("Thème", listOf("black" to "Noir (AMOLED)", "dark" to "Sombre", "gray" to "Gris"), s.theme) { v ->
+    SettingsChoice(
+        "Thème",
+        listOf("black" to "Noir (AMOLED)", "dark" to "Sombre", "gray" to "Gris", "navy" to "Bleu nuit", "wine" to "Bordeaux", "forest" to "Forêt"),
+        s.theme,
+    ) { v ->
         Store.updateSettings { it.copy(theme = v) }
     }
     SettingsChoice("Taille des affiches", listOf(0 to "Petite", 1 to "Normale", 2 to "Grande"), s.posterSize) { v ->

@@ -1,7 +1,7 @@
 package com.cloudstreampc
 
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
+import com.cloudstreampc.ui.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +53,10 @@ fun main() {
         Store.updateSettings { it.copy(repositories = listOf(defaultRepository)) }
     }
 
+    // Objects holding Compose state are created here, before any background thread can create them
+    // while the window is composing (Compose refuses to read a state born after its snapshot).
+    listOf(com.cloudstreampc.player.PlaybackManager, com.cloudstreampc.cast.CastManager, com.cloudstreampc.core.Taste, com.cloudstreampc.ui.ImageLoader)
+
     appScope.launch {
         launch { BuiltinProviders.sync() }
         PluginManager.loadInstalled()
@@ -61,6 +65,7 @@ fun main() {
         }
         com.cloudstreampc.core.EpisodeWatcher.start()
         com.cloudstreampc.sync.FolderSync.start()
+        com.cloudstreampc.ui.GamepadInput.start()
         Backup.autoBackupIfDue()
         if (Store.settings.recommendationsEnabled) com.cloudstreampc.providers.TasteEnricher.enrichSoon()
     }
@@ -75,7 +80,7 @@ fun main() {
         DisposableEffect(Unit) {
             com.cloudstreampc.core.EpisodeWatcher.onNewEpisode = { release ->
                 trayState.sendNotification(
-                    Notification("Nouvel épisode disponible", "${release.item.name} · ${release.label}", Notification.Type.Info),
+                    Notification(com.cloudstreampc.ui.I18n.tr("Nouvel épisode disponible"), "${release.item.name} · ${release.label}", Notification.Type.Info),
                 )
             }
             onDispose { com.cloudstreampc.core.EpisodeWatcher.onNewEpisode = null }
@@ -90,8 +95,8 @@ fun main() {
                     nav.select(com.cloudstreampc.ui.Tab.Library)
                 },
                 menu = {
-                    Item("Ouvrir CloudStreamPC", onClick = { state.isMinimized = false })
-                    Item("Quitter", onClick = ::exitApplication)
+                    Item(com.cloudstreampc.ui.I18n.tr("Ouvrir CloudStreamPC"), onClick = { state.isMinimized = false })
+                    Item(com.cloudstreampc.ui.I18n.tr("Quitter"), onClick = ::exitApplication)
                 },
             )
         }

@@ -1,5 +1,11 @@
 package com.cloudstreampc.ui
 
+import androidx.compose.ui.input.key.type
+
+import androidx.compose.ui.input.key.key
+
+import androidx.compose.ui.input.key.onKeyEvent
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
@@ -28,7 +34,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -62,9 +67,25 @@ fun App(nav: Navigator) {
     val tabs = rememberSaveableStateHolder()
     CloudStreamTheme {
         CompositionLocalProvider(LocalNavigator provides nav) {
-            Surface(Modifier.fillMaxSize(), color = CsColors.Background) {
+            val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+            Surface(
+                // Keyboard / gamepad: the arrows move between posters, buttons and the sidebar (Enter opens).
+                Modifier.fillMaxSize().onKeyEvent { event ->
+                    if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+                    val direction = when (event.key) {
+                        androidx.compose.ui.input.key.Key.DirectionLeft -> androidx.compose.ui.focus.FocusDirection.Left
+                        androidx.compose.ui.input.key.Key.DirectionRight -> androidx.compose.ui.focus.FocusDirection.Right
+                        androidx.compose.ui.input.key.Key.DirectionUp -> androidx.compose.ui.focus.FocusDirection.Up
+                        androidx.compose.ui.input.key.Key.DirectionDown -> androidx.compose.ui.focus.FocusDirection.Down
+                        else -> return@onKeyEvent false
+                    }
+                    // Nothing selected yet: start with the first element.
+                    focusManager.moveFocus(direction) || focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Next)
+                },
+                color = CsColors.Background,
+            ) {
                 Row(Modifier.fillMaxSize()) {
-                    Sidebar(nav)
+                    if (!(HomeState.cinema && nav.tab == Tab.Home && nav.stack.isEmpty())) Sidebar(nav)
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         // The current tab stays composed under opened pages to keep its scroll position.
                         tabs.SaveableStateProvider(nav.tab) {
@@ -107,7 +128,7 @@ private fun Sidebar(nav: Navigator) {
         Tab.entries.forEach { tab ->
             val selected = nav.tab == tab
             val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
+            val hovered by interaction.collectIsActiveAsState()
             TooltipArea(
                 tooltip = {
                     Text(

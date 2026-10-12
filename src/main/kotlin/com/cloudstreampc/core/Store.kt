@@ -105,6 +105,12 @@ data class Settings(
     /** Discord shows what is being watched ("Rich Presence"), with the user's Discord application id. */
     val discordPresence: Boolean = false,
     val discordAppId: String = "",
+    /** Optional TMDB key: cast photos, similar titles and French episode summaries on details pages. */
+    val tmdbApiKey: String = "",
+    /** Game controllers drive the app and the player. */
+    val gamepadEnabled: Boolean = true,
+    /** Interface language: "fr" or "en". */
+    val language: String = "fr",
 
     // Fournisseurs
     /** Languages of the extensions to show; empty shows all. */
@@ -211,9 +217,20 @@ data class UserLibrary(
     val favoriteRemoved: Map<String, Long> = emptyMap(),
     /** History entries removed by hand, so a synced PC doesn't bring them back. */
     val historyRemoved: Map<String, Long> = emptyMap(),
+    /** Lists made by the user ("Pour le week-end", "Films d'horreur"…). */
+    val collections: List<UserCollection> = emptyList(),
+    /** Deleted collections (id -> epoch ms), so a synced PC doesn't bring them back. */
+    val collectionsRemoved: Map<String, Long> = emptyMap(),
     /** Source that played last for a title ("apiName|url" -> source name), tried first next time. */
     val preferredSources: Map<String, String> = emptyMap(),
     /** Last change of this library, for the sync folder. */
+    val modifiedAt: Long = 0,
+)
+
+data class UserCollection(
+    val id: String = "",
+    val name: String = "",
+    val items: List<SavedItem> = emptyList(),
     val modifiedAt: Long = 0,
 )
 
@@ -351,6 +368,32 @@ object Store {
             history = lib.history - entry,
             historyRemoved = lib.historyRemoved + ("${entry.item.apiName}|${entry.item.url}" to System.currentTimeMillis()),
         )
+    }
+
+    fun createCollection(name: String): UserCollection {
+        val collection = UserCollection(java.util.UUID.randomUUID().toString().take(8), name.trim(), emptyList(), System.currentTimeMillis())
+        updateLibrary { it.copy(collections = it.collections + collection) }
+        return collection
+    }
+
+    fun renameCollection(id: String, name: String) = updateLibrary { lib ->
+        lib.copy(collections = lib.collections.map { if (it.id == id) it.copy(name = name.trim(), modifiedAt = System.currentTimeMillis()) else it })
+    }
+
+    fun deleteCollection(id: String) = updateLibrary { lib ->
+        lib.copy(collections = lib.collections.filterNot { it.id == id }, collectionsRemoved = lib.collectionsRemoved + (id to System.currentTimeMillis()))
+    }
+
+    /** Adds [item] to the collection, or removes it when it is already there. */
+    fun toggleInCollection(id: String, item: SavedItem) = updateLibrary { lib ->
+        lib.copy(collections = lib.collections.map { c ->
+            if (c.id != id) return@map c
+            val present = c.items.any { it.apiName == item.apiName && it.url == item.url }
+            c.copy(
+                items = if (present) c.items.filterNot { it.apiName == item.apiName && it.url == item.url } else listOf(item) + c.items,
+                modifiedAt = System.currentTimeMillis(),
+            )
+        })
     }
 
     fun clearHistory() = updateLibrary { lib ->

@@ -57,6 +57,10 @@ class Navigator(private val scope: CoroutineScope) {
     }
 
     fun back(): Boolean {
+        if (HomeState.cinema) {
+            HomeState.cinema = false
+            return true
+        }
         if (stack.isEmpty()) return false
         stack.removeAt(stack.lastIndex)
         return true
@@ -69,7 +73,7 @@ class Navigator(private val scope: CoroutineScope) {
     fun toast(message: String) {
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
-            snackbar.showSnackbar(message)
+            snackbar.showSnackbar(I18n.tr(message))
         }
     }
 }
