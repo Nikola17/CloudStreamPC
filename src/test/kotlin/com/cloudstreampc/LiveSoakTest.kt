@@ -13,75 +13,109 @@ import java.io.File
 import kotlin.test.Test
 
 /**
- * Live TV endurance test, the way the app plays a channel: the relay in front of a provider, mpv
- * with the live options. Run by hand against a misbehaving provider:
- *   -Dtest.soak=600 -Dtest.soak.sources=http://127.0.0.1:18080/a/1.ts,http://127.0.0.1:18080/b/1.ts
- * Reports the cuts the viewer would see: buffering pauses, frozen picture, end of stream, player closing.
+ * Live TV endurance test, the way the app plays channels: the relay in front of the provider, mpv
+ * with the live options, and zapping in the same mpv window (`loadfile replace`). Run by hand:
+ *
+ *   one channel with backups:  -Dtest.soak=600 -Dtest.soak.sources=http://…/a/1.ts,http://…/b/1.ts
+ *   several channels in a row: -Dtest.soak=300 "-Dtest.soak.channels=France 24=https://…;;Euronews=https://…"
+ *
+ * Reports what the viewer would see: buffering pauses, frozen picture, end of stream, player
+ * closing, and how long each zap took.
  */
 class LiveSoakTest {
+    private class Watch {
+        @Volatile var firstPlay: Long? = null
+        @Volatile var pauses = 0
+        @Volatile var pausedSince: Long? = null
+        @Volatile var pausedMs = 0L
+        @Volatile var eofs = 0
+        @Volatile var lastPos: Double? = null
+        @Volatile var lastAdvance = System.currentTimeMillis()
+        @Volatile var freezes = 0
+        @Volatile var frozen = false
+        @Volatile var paused = false
+        @Volatile var since = System.currentTimeMillis()
+        /** After a zap: positions of the old channel until the new one is loaded. */
+        @Volatile var awaitingFile = false
+
+        /** A new channel: counters start again, the first picture marks the end of the zap. */
+        fun restart() {
+            firstPlay = null; pauses = 0; pausedSince = null; pausedMs = 0; eofs = 0; lastPos = null
+            freezes = 0; frozen = false; paused = false; since = System.currentTimeMillis(); lastAdvance = since
+        }
+    }
+
     @Test
     fun liveKeepsPlaying() {
         val seconds = System.getProperty("test.soak")?.toIntOrNull() ?: return
-        val urls = System.getProperty("test.soak.sources")?.split(',')?.filter { it.isNotBlank() } ?: return
+        val channels: List<Pair<String, List<String>>> = System.getProperty("test.soak.channels")?.split(";;")
+            ?.filter { '=' in it }?.map { it.substringBefore('=').trim() to listOf(it.substringAfter('=').trim()) }
+            ?: System.getProperty("test.soak.sources")?.split(',')?.filter { it.isNotBlank() }?.let { listOf("Direct" to it) }
+            ?: return
         val mpv = (listOfNotNull(System.getProperty("test.mpv")) + listOf("/usr/bin/mpv", "/usr/local/bin/mpv"))
             .map(::File).firstOrNull { it.isFile } ?: return
         Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, playerInterface = false, fullscreen = false, liveBuffer = 8) }
 
-        val relayUrl = LiveRelay.open(urls.mapIndexed { i, u -> LiveSource(u, label = "source ${i + 1}") })
-        val link = runBlocking { newExtractorLink("soak", "Direct", relayUrl, ExtractorLinkType.VIDEO) }
         val ipc = MpvIpc.newServerPath()
-        val start = System.currentTimeMillis()
-        val process = ExternalPlayer.play(link, "Direct", emptyList(), ipcPath = ipc, live = true)
-
-        var firstPlay: Long? = null
-        var pauses = 0
-        var pausedSince: Long? = null
-        var pausedMs = 0L
-        var eofs = 0
-        var lastPos: Double? = null
-        var lastAdvance = System.currentTimeMillis()
-        var freezes = 0
-        var frozen = false
-        var paused = false
-        val watcher = Thread {
-            MpvIpc.watch(ipc, process, listOf("paused-for-cache", "time-pos", "eof-reached")) { name, value ->
-                val now = System.currentTimeMillis()
-                when (name) {
-                    "paused-for-cache" -> if (value.asBoolean() && firstPlay != null && !paused) {
-                        paused = true; pauses++; pausedSince = now
-                        println("%6.1fs pause de mise en tampon".format((now - start) / 1000.0))
-                    } else if (!value.asBoolean() && paused) {
-                        paused = false; pausedMs += now - (pausedSince ?: now)
-                        println("%6.1fs reprise après %.1f s".format((now - start) / 1000.0, (now - (pausedSince ?: now)) / 1000.0))
-                    }
-                    "eof-reached" -> if (value.asBoolean()) { eofs++; println("%6.1fs fin du flux".format((now - start) / 1000.0)) }
-                    "time-pos" -> if (value.isNumber) {
-                        if (firstPlay == null) { firstPlay = now; println("%6.1fs lecture démarrée".format((now - start) / 1000.0)) }
-                        if (lastPos == null || value.asDouble() > lastPos!!) { lastPos = value.asDouble(); lastAdvance = now; frozen = false }
+        val watch = Watch()
+        var process: Process? = null
+        val results = mutableListOf<String>()
+        try {
+            channels.forEachIndexed { index, (name, urls) ->
+                val relayUrl = LiveRelay.open(urls.mapIndexed { i, u -> LiveSource(u, label = "$name ${i + 1}") })
+                watch.restart()
+                watch.awaitingFile = index > 0
+                if (index == 0) {
+                    val link = runBlocking { newExtractorLink("soak", name, relayUrl, ExtractorLinkType.VIDEO) }
+                    process = ExternalPlayer.play(link, name, emptyList(), ipcPath = ipc, live = true)
+                    val started = process!!
+                    Thread {
+                        MpvIpc.watch(
+                            ipc, started, listOf("paused-for-cache", "time-pos", "eof-reached"),
+                            onEvent = { event, _ -> if (event == "file-loaded") watch.awaitingFile = false },
+                        ) { property, value ->
+                            val now = System.currentTimeMillis()
+                            val t = (now - watch.since) / 1000.0
+                            when (property) {
+                                "paused-for-cache" -> if (value.asBoolean() && watch.firstPlay != null && !watch.paused) {
+                                    watch.paused = true; watch.pauses++; watch.pausedSince = now
+                                    println("  [$name] %6.1fs pause de mise en tampon".format(t))
+                                } else if (!value.asBoolean() && watch.paused) {
+                                    watch.paused = false; watch.pausedMs += now - (watch.pausedSince ?: now)
+                                    println("  [$name] %6.1fs reprise après %.1f s".format(t, (now - (watch.pausedSince ?: now)) / 1000.0))
+                                }
+                                "eof-reached" -> if (value.asBoolean()) { watch.eofs++; println("  [$name] %6.1fs fin du flux".format(t)) }
+                                "time-pos" -> if (value.isNumber && !watch.awaitingFile) {
+                                    if (watch.firstPlay == null) { watch.firstPlay = now; watch.lastPos = null }
+                                    val previous = watch.lastPos
+                                    if (previous == null || value.asDouble() > previous) { watch.lastPos = value.asDouble(); watch.lastAdvance = now; watch.frozen = false }
+                                }
+                            }
+                        }
+                    }.apply { isDaemon = true; start() }
+                } else {
+                    // Zapping, as the app does: same window, the new channel replaces the old one.
+                    MpvIpc.send(ipc, listOf("set_property", "force-media-title", name), listOf("loadfile", relayUrl, "replace"), listOf("set_property", "pause", false))
+                }
+                val end = watch.since + seconds * 1000L
+                while (System.currentTimeMillis() < end && process?.isAlive == true) {
+                    Thread.sleep(250)
+                    val now = System.currentTimeMillis()
+                    // Picture stopped without a buffering pause: also a cut for the viewer.
+                    if (watch.firstPlay != null && !watch.paused && !watch.frozen && now - watch.lastAdvance > 1_500) {
+                        watch.frozen = true; watch.freezes++
+                        println("  [$name] %6.1fs image figée".format((now - watch.since) / 1000.0))
                     }
                 }
+                val line = "RÉSULTAT [$name] durée=${seconds}s ${if (index == 0) "démarrage" else "zapping"}=%.1fs pauses=${watch.pauses} temps_en_pause=%.1fs images_figées=${watch.freezes} fins=${watch.eofs} lecteur_fermé=${process?.isAlive != true} reconnexions_relais=${LiveRelay.reconnects} connexions_max=${LiveRelay.maxOpenConnections.get()}"
+                    .format(((watch.firstPlay ?: watch.since) - watch.since) / 1000.0, watch.pausedMs / 1000.0)
+                println(line)
+                results += line
             }
-        }.apply { isDaemon = true; start() }
-
-        val end = start + seconds * 1000L
-        while (System.currentTimeMillis() < end && process.isAlive) {
-            Thread.sleep(250)
-            val now = System.currentTimeMillis()
-            // Picture stopped without a buffering pause: also a cut for the viewer.
-            if (firstPlay != null && !paused && !frozen && now - lastAdvance > 1_500) {
-                frozen = true; freezes++
-                println("%6.1fs image figée".format((now - start) / 1000.0))
-            }
+        } finally {
+            process?.destroy()
+            LiveRelay.close()
         }
-        val closed = !process.isAlive
-        val reconnects = LiveRelay.reconnects
-        val source = LiveRelay.currentSource?.label
-        process.destroy()
-        LiveRelay.close()
-        watcher.join(2_000)
-        println(
-            "RÉSULTAT durée=${seconds}s démarrage=%.1fs pauses=$pauses temps_en_pause=%.1fs images_figées=$freezes fins=$eofs lecteur_fermé=$closed reconnexions_relais=$reconnects source_finale=$source connexions_max=${LiveRelay.maxOpenConnections.get()} position=%.0fs"
-                .format(((firstPlay ?: start) - start) / 1000.0, pausedMs / 1000.0, lastPos ?: 0.0),
-        )
+        println("BILAN\n" + results.joinToString("\n"))
     }
 }
