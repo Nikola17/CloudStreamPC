@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CloudStreamPC
+GenericName=Films, séries et TV
+Comment=CloudStream pour ordinateur
+Exec=CloudStreamPC %U
+Icon=cloudstreampc
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=cloudstream;streaming;iptv;films;séries;
+StartupWMClass=com-cloudstreampc-MainKt

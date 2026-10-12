@@ -52,6 +52,10 @@ data class DownloadItem(
     val totalSegments: Int = 0,
     val error: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    /** Subtitle files saved next to the video (mpv loads them by their name). */
+    val subtitleFiles: List<String> = emptyList(),
+    /** Why a queued download waits (off-peak hours). */
+    val note: String? = null,
 ) {
     val progress: Float
         get() = when {
@@ -118,16 +122,42 @@ object DownloadManager {
             delete(it.id)
         }
         val links = mutableListOf<ExtractorLink>()
+        val subtitles = mutableListOf<com.lagradost.cloudstream3.SubtitleFile>()
         withContext(Dispatchers.IO) {
-            runCatching { request.api.loadLinks(request.playable.data, false, {}) { links += it } }
+            runCatching { request.api.loadLinks(request.playable.data, false, { subtitles += it }) { links += it } }
         }
         val link = PlaybackManager.bestLink(links.filter { it.type == ExtractorLinkType.VIDEO || it.type == ExtractorLinkType.M3U8 })
             ?: return "Aucune source téléchargeable"
-        enqueue(request, link)
+        enqueue(request, link, subtitles)
         return null
     }
 
-    fun enqueue(request: PlayRequest, link: ExtractorLink) {
+    /**
+     * Every episode of [requests] not downloaded yet, one after the other (each one looks for its
+     * best source). Returns how many were added.
+     */
+    suspend fun downloadAll(requests: List<PlayRequest>, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): Int {
+        val todo = requests.filter { r -> find(r.api.name, r.playable.data)?.let { it.status == DownloadStatus.FAILED } ?: true }
+        var added = 0
+        todo.forEachIndexed { i, request ->
+            if (download(request) == null) added++
+            onProgress(i + 1, todo.size)
+        }
+        return added
+    }
+
+    /** Subtitles in the preferred languages (Paramètres → Lecteur), two at most. */
+    internal fun preferredSubtitles(all: List<com.lagradost.cloudstream3.SubtitleFile>): List<com.lagradost.cloudstream3.SubtitleFile> {
+        val wanted = Store.settings.subtitleLanguages.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        if (wanted.isEmpty()) return emptyList()
+        return all.filter { sub ->
+            val lang = sub.lang.lowercase()
+            val words = lang.split(Regex("[^\\p{L}]+")).filter { it.isNotEmpty() }
+            wanted.any { code -> lang == code || words.any { w -> w == code || (code.length >= 2 && w.startsWith(code)) } }
+        }.distinctBy { it.url }.take(2)
+    }
+
+    fun enqueue(request: PlayRequest, link: ExtractorLink, subtitles: List<com.lagradost.cloudstream3.SubtitleFile> = emptyList()) {
         val playable = request.playable
         val hls = link.type == ExtractorLinkType.M3U8 || link.url.contains(".m3u8")
         val extension = if (hls) "ts" else link.url.substringBefore("?").substringAfterLast('.', "mp4").takeIf { it.length in 2..4 } ?: "mp4"
@@ -152,14 +182,52 @@ object DownloadManager {
         items.add(0, item)
         save(true)
         start(item.id)
+        if (Store.settings.downloadSubtitles) {
+            val chosen = preferredSubtitles(subtitles)
+            if (chosen.isNotEmpty()) scope.launch { saveSubtitles(item, chosen) }
+        }
+    }
+
+    /** `Video.fr.srt` next to `Video.mp4`: mpv shows them with the video. */
+    private fun saveSubtitles(item: DownloadItem, subtitles: List<com.lagradost.cloudstream3.SubtitleFile>) {
+        val base = item.file.nameWithoutExtension
+        val code = Store.settings.subtitleLanguages.split(',').firstOrNull()?.trim()?.ifBlank { null } ?: "sub"
+        val saved = subtitles.mapIndexedNotNull { i, sub ->
+            runCatching {
+                val data = fetchBytes(sub.url, sub.headers ?: emptyMap())
+                val ext = sub.url.substringBefore('?').substringAfterLast('.', "srt").lowercase().takeIf { it in setOf("srt", "vtt", "ass", "ssa") } ?: "srt"
+                val name = if (i == 0) "$base.$code.$ext" else "$base.$code${i + 1}.$ext"
+                File(item.file.parentFile, name).apply { writeBytes(data) }.path
+            }.onFailure { Logger.error("Sous-titres ${sub.lang}", it) }.getOrNull()
+        }
+        if (saved.isNotEmpty()) update(item.id) { it.copy(subtitleFiles = saved) }
+    }
+
+    /** Off-peak hours: whether downloads may run at [hour] (the window can cross midnight). */
+    internal fun allowedAt(hour: Int, start: Int, end: Int): Boolean =
+        if (start == end) true else if (start < end) hour in start until end else hour >= start || hour < end
+
+    private fun allowedNow(): Boolean {
+        val s = Store.settings
+        return !s.offPeakOnly || allowedAt(java.time.LocalTime.now().hour, s.offPeakStart, s.offPeakEnd)
+    }
+
+    /** Waits for the off-peak hours, showing why on the download. */
+    private suspend fun waitForWindow(id: String) {
+        if (allowedNow()) return
+        val s = Store.settings
+        update(id) { it.copy(status = DownloadStatus.QUEUED, note = "Heures creuses : reprise à ${s.offPeakStart} h") }
+        while (!allowedNow()) kotlinx.coroutines.delay(30_000)
+        update(id) { it.copy(status = DownloadStatus.RUNNING, note = null) }
     }
 
     fun start(id: String) {
         if (jobs[id]?.isActive == true) return
         update(id) { it.copy(status = DownloadStatus.QUEUED, error = null) }
         jobs[id] = scope.launch {
+            waitForWindow(id)
             permits.withPermit {
-                update(id) { it.copy(status = DownloadStatus.RUNNING) }
+                update(id) { it.copy(status = DownloadStatus.RUNNING, note = null) }
                 val item = items.firstOrNull { it.id == id } ?: return@withPermit
                 try {
                     if (item.hls) downloadHls(item) else downloadFile(item)
@@ -185,7 +253,10 @@ object DownloadManager {
     fun delete(id: String, deleteFile: Boolean = true) {
         jobs.remove(id)?.cancel()
         val item = items.firstOrNull { it.id == id } ?: return
-        if (deleteFile) item.file.delete()
+        if (deleteFile) {
+            item.file.delete()
+            item.subtitleFiles.forEach { File(it).delete() }
+        }
         items.remove(item)
         save(true)
     }
@@ -210,12 +281,14 @@ object DownloadManager {
                 if (!resumed) out.setLength(0)
                 out.seek(done)
                 body.byteStream().use { input ->
-                    val buffer = ByteArray(256 * 1024)
+                    val buffer = ByteArray(64 * 1024)
                     var lastUpdate = 0L
                     while (true) {
                         coroutineContext.ensureActive()
+                        waitForWindow(item.id)
                         val read = input.read(buffer)
                         if (read < 0) break
+                        Throttle.take(read)
                         out.write(buffer, 0, read)
                         done += read
                         val now = System.currentTimeMillis()
@@ -282,8 +355,10 @@ object DownloadManager {
             out.seek(written)
             for (index in start until media.segments.size) {
                 coroutineContext.ensureActive()
+                waitForWindow(item.id)
                 val segment = media.segments[index]
                 var data = fetchBytes(segment.url, item.headers)
+                Throttle.take(data.size)
                 val key = segment.key
                 if (key != null && key.method == "AES-128" && key.uri != null) {
                     val keyBytes = keys.getOrPut(key.uri) { fetchBytes(key.uri, item.headers) }
@@ -299,5 +374,23 @@ object DownloadManager {
             }
         }
     }
+}
 
+/** Speed limit shared by all downloads (Paramètres → Téléchargements), at most one second of burst. */
+internal object Throttle {
+    private var available = 0.0
+    private var last = System.nanoTime()
+
+    suspend fun take(bytes: Int) {
+        val limit = Store.settings.downloadSpeedLimit * 1024.0
+        if (limit <= 0) return
+        val waitMs = synchronized(this) {
+            val now = System.nanoTime()
+            available = minOf(limit, available + (now - last) / 1e9 * limit)
+            last = now
+            available -= bytes
+            if (available < 0) (-available / limit * 1000).toLong() else 0L
+        }
+        if (waitMs > 0) kotlinx.coroutines.delay(waitMs)
+    }
 }

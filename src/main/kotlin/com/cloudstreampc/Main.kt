@@ -49,6 +49,7 @@ private val backButton = if (System.getProperty("os.name").lowercase().contains(
 
 fun main(args: Array<String>) {
     val startHidden = com.cloudstreampc.core.Autostart.HIDDEN_ARG in args
+    val smokeDir = args.firstOrNull { it.startsWith("--smoke-test=") }?.substringAfter("=")?.let { java.io.File(it) }
     Logger.install()
     com.cloudstreampc.core.CrashReport.install()
     Runtime.getRuntime().addShutdownHook(Thread { runCatching { com.cloudstreampc.net.ChromiumBrowser.shutdown() } })
@@ -61,7 +62,10 @@ fun main(args: Array<String>) {
 
     // Objects holding Compose state are created here, before any background thread can create them
     // while the window is composing (Compose refuses to read a state born after its snapshot).
-    listOf(com.cloudstreampc.player.PlaybackManager, com.cloudstreampc.cast.CastManager, com.cloudstreampc.core.Taste, com.cloudstreampc.ui.ImageLoader)
+    listOf(
+        com.cloudstreampc.player.PlaybackManager, com.cloudstreampc.cast.CastManager, com.cloudstreampc.core.Taste, com.cloudstreampc.ui.ImageLoader,
+        com.cloudstreampc.plugins.ExtensionHealth, com.cloudstreampc.player.PlayerSurface, com.cloudstreampc.core.Parental,
+    )
 
     appScope.launch {
         launch { BuiltinProviders.sync() }
@@ -71,6 +75,7 @@ fun main(args: Array<String>) {
         }
         com.cloudstreampc.core.EpisodeWatcher.start()
         com.cloudstreampc.player.RemoteControl.applySettings()
+        com.cloudstreampc.plugins.ExtensionHealth.checkIfDue()
         com.cloudstreampc.sync.FolderSync.start()
         com.cloudstreampc.ui.GamepadInput.start()
         Backup.autoBackupIfDue()
@@ -176,6 +181,7 @@ fun main(args: Array<String>) {
                 onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(listener) }
             }
             StartupGate(nav)
+            if (smokeDir != null) com.cloudstreampc.ui.SmokeTest(window, nav, smokeDir) { exitApplication() }
             if (confirmExit) {
                 CloudStreamTheme {
                     AlertDialog(

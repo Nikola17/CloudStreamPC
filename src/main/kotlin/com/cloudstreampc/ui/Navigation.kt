@@ -39,6 +39,7 @@ sealed interface Route {
     data class Category(val apiName: String, val page: MainPageData) : Route
     data class Settings(val page: SettingsPage) : Route
     data object TvGuide : Route
+    data object Stats : Route
 }
 
 class Navigator(private val scope: CoroutineScope) {

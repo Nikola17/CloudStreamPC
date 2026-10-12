@@ -7,6 +7,17 @@
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
+; x64 (default) or arm64 (Windows on ARM: Snapdragon PCs…).
+#ifndef Arch
+  #define Arch "x64"
+#endif
+#if Arch == "arm64"
+  #define ArchAllowed "arm64"
+  #define FileSuffix "-arm64"
+#else
+  #define ArchAllowed "x64compatible"
+  #define FileSuffix ""
+#endif
 
 [Setup]
 AppId={{B6A3C1E2-7F4D-4E8A-9C11-3D5E2F8A6B70}
@@ -21,15 +32,15 @@ DefaultGroupName=CloudStreamPC
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename=CloudStreamPC-{#AppVersion}-setup
+OutputBaseFilename=CloudStreamPC-{#AppVersion}{#FileSuffix}-setup
 SetupIconFile=..\icons\icon.ico
 UninstallDisplayIcon={app}\CloudStreamPC.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
 LZMANumBlockThreads=4
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#ArchAllowed}
+ArchitecturesInstallIn64BitMode={#ArchAllowed}
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no

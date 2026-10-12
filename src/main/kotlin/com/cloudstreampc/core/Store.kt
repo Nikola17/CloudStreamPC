@@ -31,6 +31,13 @@ data class Profile(
     val color: Long = 0xFF3D50FA,
     /** Optional 4-digit code asked when switching to this profile. */
     val pin: String? = null,
+    /** Child profile: titles above [maxAge] and NSFW hidden; leaving it asks for the parental code. */
+    val kids: Boolean = false,
+    val maxAge: Int = 12,
+    /** Titles without a known age rating are blocked too. */
+    val blockUnrated: Boolean = false,
+    /** Extensions hidden in this profile (names). */
+    val hiddenProviders: Set<String> = emptySet(),
 )
 
 enum class IptvType { XTREAM, M3U }
@@ -172,6 +179,14 @@ data class Settings(
     val dns: String = "none",
     val downloadDir: String? = null,
     val parallelDownloads: Int = 2,
+    /** KB/s shared by all downloads; 0: no limit. */
+    val downloadSpeedLimit: Int = 0,
+    /** Downloads only run between these hours (e.g. 1 h → 7 h). */
+    val offPeakOnly: Boolean = false,
+    val offPeakStart: Int = 1,
+    val offPeakEnd: Int = 7,
+    /** Subtitles in the preferred languages are saved next to the video. */
+    val downloadSubtitles: Boolean = true,
     /** Looks for new episodes of followed series. */
     val checkNewEpisodes: Boolean = true,
     val newEpisodeNotifications: Boolean = true,
@@ -184,6 +199,8 @@ data class Settings(
     val checkAppUpdates: Boolean = true,
 
     // Comptes et sécurité
+    /** Code that unlocks the settings and the other profiles from a child profile. */
+    val parentalPin: String? = null,
     val profiles: List<Profile> = listOf(Profile()),
     val currentProfile: String = "default",
     val askProfileAtStartup: Boolean = false,
@@ -323,6 +340,7 @@ object Store {
 
     @Synchronized
     fun switchProfile(id: String) {
+        Parental.unlocked = false
         updateSettings { it.copy(currentProfile = id) }
         library = readJsonFile(AppDirs.libraryFile(id)) { UserLibrary() }
     }

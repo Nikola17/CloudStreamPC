@@ -16,7 +16,19 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            mpv: x86_64
+          # Windows on ARM (Snapdragon PCs…): best effort, the release goes out without it if it fails.
+          - arch: arm64
+            runner: windows-11-arm
+            mpv: aarch64
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
     env:
       # Code signing (optional): see "Signature" in the README.
       WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
@@ -51,7 +63,7 @@ jobs:
         run: |
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "CloudStreamPC" }
           $release = Invoke-RestMethod -Headers $headers https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest
-          $asset = $release.assets | Where-Object { $_.name -match '^mpv-x86_64-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
+          $asset = $release.assets | Where-Object { $_.name -match '^mpv-${{ matrix.mpv }}-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
           if (-not $asset) { throw "Aucune archive mpv trouvée" }
           Write-Host "mpv : $($asset.name)"
           Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile mpv.7z
@@ -64,6 +76,7 @@ jobs:
 
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
       - name: Test mpv on Windows (IPC, video in the window, remote)
+        if: matrix.arch == 'x64'
         run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" --tests "com.cloudstreampc.EmbeddedPlayerTest" --tests "com.cloudstreampc.RemoteControlTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
 
       # Release build (unused parts of Compose removed), then jars stored for the installer's LZMA.
@@ -71,6 +84,30 @@ jobs:
         run: |
           ./gradlew --no-daemon createReleaseDistributable
           python scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC windows
+
+      # The packaged app goes through its screens, captures each one and plays a test picture in
+      # its window (see SmokeTest.kt): a crash or a missing part of the runtime fails the build.
+      - name: Interface test
+        shell: pwsh
+        run: |
+          $data = "$env:RUNNER_TEMP\smoke-home"
+          New-Item -ItemType Directory -Force $data | Out-Null
+          '{"firstLaunchDone": true}' | Set-Content "$data\settings.json"
+          $env:JAVA_TOOL_OPTIONS = "-Dcloudstreampc.home=$data"
+          $p = Start-Process -FilePath build/compose/binaries/main-release/app/CloudStreamPC/CloudStreamPC.exe -ArgumentList "--smoke-test=$PWD\smoke" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Host "Test d'interface bloqué" }
+          if (-not (Test-Path smoke/smoke-ok.txt)) {
+            Get-ChildItem "$data\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 60 }
+            throw "Test d'interface échoué"
+          }
+          Get-Content smoke/smoke-ok.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-windows-${{ matrix.arch }}
+          path: smoke/
+          if-no-files-found: ignore
 
       - name: Sign the program
         shell: pwsh
@@ -87,7 +124,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           $src = (Resolve-Path build/compose/binaries/main-release/app/CloudStreamPC).Path
           $out = (Resolve-Path dist).Path
-          & $iscc /Q "/DAppVersion=$v" "/DSourceDir=$src" "/DOutputDir=$out" scripts/installer.iss
+          & $iscc /Q "/DAppVersion=$v" "/DArch=${{ matrix.arch }}" "/DSourceDir=$src" "/DOutputDir=$out" scripts/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué" }
 
       - name: Sign the installer
@@ -100,12 +137,13 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.version.outputs.version }}"
-          Compress-Archive -CompressionLevel Optimal -Path build/compose/binaries/main-release/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v-portable.zip"
+          $suffix = if ("${{ matrix.arch }}" -eq "arm64") { "-arm64" } else { "" }
+          Compress-Archive -CompressionLevel Optimal -Path build/compose/binaries/main-release/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v$suffix-portable.zip"
           Get-ChildItem dist | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CloudStreamPC-windows
+          name: CloudStreamPC-windows-${{ matrix.arch }}
           path: dist/*
 
   linux:
@@ -138,6 +176,22 @@ jobs:
           ./gradlew --no-daemon createReleaseDistributable
           python3 scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC linux
 
+      - name: Interface test
+        run: |
+          data="$RUNNER_TEMP/smoke-home"
+          mkdir -p "$data" && echo '{"firstLaunchDone": true}' > "$data/settings.json"
+          JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" xvfb-run -a -s "-screen 0 1600x1000x24" \
+            timeout 300 build/compose/binaries/main-release/app/CloudStreamPC/bin/CloudStreamPC --smoke-test=$PWD/smoke || true
+          if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
+          cat smoke/smoke-ok.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-linux
+          path: smoke/
+          if-no-files-found: ignore
+
       # mpv comes from the system (apt install mpv); the torrent engine and yt-dlp download on first use.
       - name: Packages
         run: |
@@ -153,6 +207,13 @@ jobs:
           cp out/*.deb "dist/CloudStreamPC-$v-amd64.deb"
           cp out/*.rpm "dist/CloudStreamPC-$v-x86_64.rpm"
           XZ_OPT="-9 -T0" tar -C "$(dirname $app)" -cJf "dist/CloudStreamPC-$v-linux-x64.tar.xz" CloudStreamPC
+          # AppImage: one file that runs on most distributions (mpv from the system).
+          mkdir -p AppDir && cp -a $app/. AppDir/
+          cp packaging/linux/cloudstreampc.desktop AppDir/ && cp icons/icon.png AppDir/cloudstreampc.png
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/bin/CloudStreamPC" "$@"\n' > AppDir/AppRun && chmod +x AppDir/AppRun
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool && chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-appstream AppDir "dist/CloudStreamPC-$v-x86_64.AppImage" \
+            || echo "::warning::AppImage non construite"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
@@ -161,7 +222,24 @@ jobs:
           path: dist/*
 
   macos:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          # Intel Macs: best effort, the release goes out without it if the runner is unavailable.
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'x64' }}
+    env:
+      # Developer ID signing and notarization (optional): see "Signature" in the README.
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -190,8 +268,36 @@ jobs:
           ./gradlew --no-daemon createReleaseDistributable
           app=build/compose/binaries/main-release/app/CloudStreamPC.app
           python3 scripts/slim_app.py $app macos
-          # Files changed after jpackage's signature: sign the bundle again (ad hoc, no Apple account).
-          codesign --force --deep --sign - $app
+          if [ -n "$MACOS_CERTIFICATE" ]; then
+            echo "$MACOS_CERTIFICATE" | base64 --decode > cert.p12
+            security create-keychain -p ci build.keychain
+            security default-keychain -s build.keychain
+            security unlock-keychain -p ci build.keychain
+            security import cert.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain > /dev/null
+            identity=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+            echo "identity=$identity" >> "$GITHUB_ENV"
+            python3 scripts/macos_sign.py $app "$identity" packaging/macos/entitlements.plist
+          else
+            # Files changed after jpackage's signature: sign the bundle again (ad hoc, no Apple account).
+            codesign --force --deep --sign - $app
+          fi
+
+      - name: Interface test
+        run: |
+          data="$RUNNER_TEMP/smoke-home"
+          mkdir -p "$data" && echo '{"firstLaunchDone": true}' > "$data/settings.json"
+          JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" perl -e 'alarm 300; exec @ARGV' \
+            build/compose/binaries/main-release/app/CloudStreamPC.app/Contents/MacOS/CloudStreamPC --smoke-test=$PWD/smoke || true
+          if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
+          cat smoke/smoke-ok.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-macos-${{ matrix.arch }}
+          path: smoke/
+          if-no-files-found: ignore
 
       - name: Package
         run: |
@@ -200,17 +306,26 @@ jobs:
           jpackage --type dmg --app-image build/compose/binaries/main-release/app/CloudStreamPC.app --name CloudStreamPC \
             --app-version $v --dest out --vendor CloudStreamPC
           # LZMA-compressed image (macOS 10.15+), smaller than jpackage's zlib one.
-          hdiutil convert out/*.dmg -format ULMO -o "dist/CloudStreamPC-$v-macos-arm64.dmg"
+          dmg="dist/CloudStreamPC-$v-macos-${{ matrix.arch }}.dmg"
+          hdiutil convert out/*.dmg -format ULMO -o "$dmg"
+          if [ -n "${identity:-}" ]; then
+            codesign --force --timestamp --sign "$identity" "$dmg"
+            if [ -n "$APPLE_ID" ]; then
+              xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+              xcrun stapler staple "$dmg"
+            fi
+          fi
           ls -l dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CloudStreamPC-macos
+          name: CloudStreamPC-macos-${{ matrix.arch }}
           path: dist/*
 
   release:
     needs: [ windows, linux, macos ]
-    if: github.ref == 'refs/heads/main' && inputs.test_signing != true
+    # The ARM Windows and Intel Mac builds are optional: the files below are checked instead.
+    if: always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.test_signing != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -222,7 +337,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: CloudStreamPC-*
           merge-multiple: true
+
+      - name: Required files
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          for f in setup.exe portable.zip amd64.deb x86_64.rpm linux-x64.tar.xz macos-arm64.dmg; do
+            [ -f "dist/CloudStreamPC-$v-$f" ] || { echo "Fichier manquant : CloudStreamPC-$v-$f"; exit 1; }
+          done
+          ls -l dist
 
       # Download size watch: each file against the same file of the previous release.
       - name: Sizes
@@ -239,6 +363,10 @@ jobs:
           mv ../SHA256SUMS.txt .
           cat SHA256SUMS.txt
 
+      # winget and Scoop manifests (submitted by the owner, see the README).
+      - name: Manifests
+        run: python3 scripts/manifests.py dist "${{ steps.version.outputs.version }}" "${{ github.repository }}"
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -254,7 +382,11 @@ jobs:
 
             **Linux :** `.deb` (Ubuntu, Debian, Mint…), `.rpm` (Fedora, openSUSE…) ou `linux-x64.tar.xz`. Installez aussi mpv (`sudo apt install mpv`).
 
-            **macOS (Apple Silicon) :** ouvrez le `.dmg` et glissez CloudStreamPC dans Applications. Installez mpv (`brew install mpv`).
+            Windows sur ARM (Snapdragon…) : `-arm64-setup.exe` quand il est présent.
+
+            **Linux :** aussi en `.AppImage` (un seul fichier : `chmod +x` puis lancez-le).
+
+            **macOS :** `macos-arm64.dmg` (Apple Silicon) ou `macos-x64.dmg` (Intel) ; ouvrez le `.dmg` et glissez CloudStreamPC dans Applications. Installez mpv (`brew install mpv`).
             L'application n'étant pas notariée, au premier lancement : clic droit sur l'application → Ouvrir.
 
             Les versions suivantes s'installent depuis l'application (Paramètres → Mises à jour et Sauvegarde).

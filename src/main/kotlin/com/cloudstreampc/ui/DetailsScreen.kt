@@ -143,7 +143,7 @@ fun DetailsScreen(route: Route.Details) {
         val loaded = response
         when {
             api == null -> MessageBox("Extension « ${route.apiName} » non chargée", "Réinstallez-la depuis l'onglet Extensions.")
-            loaded != null -> DetailsContent(api, loaded)
+            loaded != null -> if (Store.profile.kids) KidsGate(api, loaded) else DetailsContent(api, loaded)
             error != null -> MessageBox("Impossible d'ouvrir « ${route.name} »", error) {
                 FilledTonalButton(onClick = { attempt++ }) { Text("Réessayer") }
             }
@@ -152,6 +152,29 @@ fun DetailsScreen(route: Route.Details) {
         FilledTonalIconButton(onClick = { nav.back() }, modifier = Modifier.padding(16.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour")
         }
+    }
+}
+
+/** Child profile: the title opens only if its age rating fits the profile (Cinemeta / TMDB looked up when needed). */
+@Composable
+private fun KidsGate(api: MainAPI, data: LoadResponse) {
+    val profile = Store.profile
+    var certification by remember(data) { mutableStateOf<String?>(null) }
+    var checked by remember(data) { mutableStateOf(com.cloudstreampc.core.Parental.ageOf(data.contentRating) != null) }
+    LaunchedEffect(data) {
+        if (checked) return@LaunchedEffect
+        certification = runCatching { com.cloudstreampc.providers.Enrichment.of(data)?.certification }.getOrNull()
+        checked = true
+    }
+    when {
+        !checked -> LoadingBox("Vérification de l'âge conseillé…")
+        com.cloudstreampc.core.Parental.allowed(profile, data.type, data.contentRating, certification) -> DetailsContent(api, data)
+        else -> MessageBox(
+            "Pas disponible dans ce profil",
+            I18n.tr("« {} » est déconseillé aux moins de {} ans.")
+                .replaceFirst("{}", data.name)
+                .replaceFirst("{}", (com.cloudstreampc.core.Parental.ageOf(data.contentRating) ?: com.cloudstreampc.core.Parental.ageOf(certification) ?: (profile.maxAge + 1)).toString()),
+        )
     }
 }
 
@@ -212,6 +235,16 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
         scope.launch {
             val error = DownloadManager.download(PlayRequest(api, data, queue, index))
             nav.toast(error ?: "Ajouté aux téléchargements")
+        }
+    }
+
+    /** Every episode of the season shown (or of the whole list), in order. */
+    fun downloadSeason(indices: List<Int>) {
+        if (indices.isEmpty() || data is LiveStreamLoadResponse) return
+        nav.toast(I18n.tr("Recherche des sources de {} épisode(s)…").replace("{}", indices.size.toString()))
+        scope.launch {
+            val added = DownloadManager.downloadAll(indices.filter { it in queue.indices }.map { PlayRequest(api, data, queue, it) })
+            nav.toast(I18n.tr("{} épisode(s) ajouté(s) aux téléchargements").replace("{}", added.toString()))
         }
     }
 
@@ -373,12 +406,23 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                             }
                         }
                     }
-                    if (seasons.size > 1) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            seasons.forEach { s -> FilterChip(season == s, { season = s }, { Text(seasonLabel(s)) }) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (seasons.size > 1) {
+                            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                seasons.forEach { s -> FilterChip(season == s, { season = s }, { Text(seasonLabel(s)) }) }
+                            }
+                        } else {
+                            Text("${episodes.size} épisode${if (episodes.size > 1) "s" else ""}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         }
-                    } else {
-                        Text("${episodes.size} épisode${if (episodes.size > 1) "s" else ""}", style = MaterialTheme.typography.titleMedium)
+                        if (data !is LiveStreamLoadResponse && episodes.size > 1) {
+                            TextButton(onClick = {
+                                downloadSeason(episodes.indices.filter { seasons.size <= 1 || episodes[it].season == season })
+                            }) {
+                                Icon(AppIcons.Download, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (seasons.size > 1) "Télécharger la saison" else "Tout télécharger")
+                            }
+                        }
                     }
                 }
             }

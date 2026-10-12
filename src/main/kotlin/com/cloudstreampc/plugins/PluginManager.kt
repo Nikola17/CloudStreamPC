@@ -187,6 +187,12 @@ object PluginManager {
         }
     }
 
+    /** Sites (providers) brought by an installed extension. */
+    fun providersOf(internalName: String): List<com.lagradost.cloudstream3.MainAPI> {
+        val path = loaded[internalName]?.file?.absolutePath ?: return emptyList()
+        return providers.filter { it.sourcePlugin == path }
+    }
+
     private fun unloadLocked(internalName: String) {
         val plugin = loaded.remove(internalName) ?: return
         runCatching { plugin.instance.beforeUnload() }

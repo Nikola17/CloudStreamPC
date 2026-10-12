@@ -71,6 +71,26 @@ fun GeneralSettings() {
         Store.updateSettings { it.copy(parallelDownloads = v) }
         DownloadManager.applyParallelSetting()
     }
+    SettingsChoice(
+        "Limite de débit",
+        listOf(0 to "Aucune", 500 to "500 Ko/s", 1000 to "1 Mo/s", 2000 to "2 Mo/s", 5000 to "5 Mo/s", 10000 to "10 Mo/s"),
+        s.downloadSpeedLimit,
+    ) { v -> Store.updateSettings { it.copy(downloadSpeedLimit = v) } }
+    SettingsSwitch(
+        "Heures creuses uniquement",
+        "Les téléchargements attendent la plage choisie et s'arrêtent à sa fin (reprise ensuite là où ils en étaient)",
+        s.offPeakOnly,
+    ) { v -> Store.updateSettings { it.copy(offPeakOnly = v) } }
+    if (s.offPeakOnly) {
+        val hours = (0..23).map { it to "$it h" }
+        SettingsChoice("Début des heures creuses", hours, s.offPeakStart) { v -> Store.updateSettings { it.copy(offPeakStart = v) } }
+        SettingsChoice("Fin des heures creuses", hours, s.offPeakEnd) { v -> Store.updateSettings { it.copy(offPeakEnd = v) } }
+    }
+    SettingsSwitch(
+        "Télécharger les sous-titres",
+        "Ceux des langues préférées (Lecteur → Langues des sous-titres), enregistrés à côté de la vidéo",
+        s.downloadSubtitles,
+    ) { v -> Store.updateSettings { it.copy(downloadSubtitles = v) } }
 
     SettingsCategory("Nouveaux épisodes")
     SettingsSwitch(
@@ -287,12 +307,9 @@ private fun ProviderTestDialog(onDismiss: () -> Unit) {
             results[api.name] = null
             scope.launch {
                 val start = System.currentTimeMillis()
-                results[api.name] = try {
-                    val count = withTimeout(30_000) { withContext(Dispatchers.IO) { api.search("the", 1)?.items?.size ?: 0 } }
-                    "✓ $count résultats en ${(System.currentTimeMillis() - start) / 100 / 10.0} s"
-                } catch (t: Throwable) {
-                    "✗ ${t.message ?: t.javaClass.simpleName}"
-                }
+                val result = withContext(Dispatchers.IO) { com.cloudstreampc.plugins.ExtensionHealth.check(api) }
+                com.cloudstreampc.plugins.ExtensionHealth.results[api.name] = result
+                results[api.name] = if (result.ok) "✓ ${I18n.tr("répond")} (${(System.currentTimeMillis() - start) / 100 / 10.0} s)" else "✗ ${result.detail}"
             }
         }
     }

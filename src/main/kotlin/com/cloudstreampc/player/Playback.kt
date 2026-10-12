@@ -102,6 +102,17 @@ object PlaybackManager {
         @Volatile var relayed = false
         /** Live: times the stream ended, to stop retrying a channel that is really off. */
         val liveEnds = java.util.concurrent.CopyOnWriteArrayList<Long>()
+        /** Seconds really watched of the current item (statistics), and the last position seen. */
+        @Volatile var watched = 0.0
+        @Volatile var lastPosition: Double? = null
+
+        /** Counts the time watched in the statistics before another item replaces this one. */
+        fun flushStats() {
+            val seconds = watched
+            watched = 0.0
+            lastPosition = null
+            runCatching { com.cloudstreampc.core.Stats.record(request.response, request.playable.label?.takeIf { !request.isLive }, seconds) }
+        }
 
         fun save() {
             val pos = position ?: return
@@ -192,6 +203,7 @@ object PlaybackManager {
             listOf("set_property", "pause", false),
         )
         if (!sent) return launchLive(request, link, emptyList())
+        session.flushStats()
         session.request = request
         session.sourceName = link.name
         session.direct = link
@@ -375,6 +387,10 @@ object PlaybackManager {
                 },
             ) { pos, dur ->
                 if (session.switching) return@observe
+                // Normal playback moves forward by small steps; seeks and pauses are not watching time.
+                val previous = session.lastPosition
+                if (pos != null && previous != null && pos - previous in 0.0..3.0) session.watched += pos - previous
+                session.lastPosition = pos
                 session.position = pos
                 session.duration = dur
                 nowPlaying = NowPlaying(session.request, session.sourceName, pos, dur)
@@ -392,6 +408,7 @@ object PlaybackManager {
             LiveRelay.close()
         }
         if (!session.switching) session.save()
+        session.flushStats()
         val request = session.request
         runCatching { com.cloudstreampc.core.Taste.recordOutcome(request.response, session.position, session.duration) }
         if (nowPlaying?.request === request) nowPlaying = null
@@ -470,6 +487,7 @@ object PlaybackManager {
             session.switching = false
             return
         }
+        session.flushStats()
         session.request = next
         session.sourceName = link.name
         session.itemStartedAt = System.currentTimeMillis()

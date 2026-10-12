@@ -1,0 +1,55 @@
+# Flatpak of CloudStreamPC, built from the Linux archive of a release (the app brings its own Java).
+# A Flatpak app can't start another Flatpak, so mpv is built in (modules below, on the runtime's ffmpeg).
+#
+#   flatpak install flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+#   flatpak-builder --user --install --force-clean build packaging/flatpak/io.github.nikola17.CloudStreamPC.yml
+#   flatpak run io.github.nikola17.CloudStreamPC
+#
+# Update `url` and `sha256` to the release being packaged (SHA256SUMS.txt of the release).
+app-id: io.github.nikola17.CloudStreamPC
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: CloudStreamPC
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: libass
+    config-opts: [--disable-static]
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+  - name: mpv
+    buildsystem: meson
+    config-opts: [-Dlibmpv=false, -Dmanpage-build=disabled, -Dlua=enabled]
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.39.0
+  - name: cloudstreampc
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/cloudstreampc /app/bin
+      - cp -a CloudStreamPC/. /app/lib/cloudstreampc/
+      - ln -s /app/lib/cloudstreampc/bin/CloudStreamPC /app/bin/CloudStreamPC
+      - install -Dm644 cloudstreampc.desktop /app/share/applications/io.github.nikola17.CloudStreamPC.desktop
+      - sed -i 's/^Icon=.*/Icon=io.github.nikola17.CloudStreamPC/' /app/share/applications/io.github.nikola17.CloudStreamPC.desktop
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.nikola17.CloudStreamPC.png
+    sources:
+      - type: archive
+        url: https://github.com/Nikola17/CloudStreamPC/releases/download/v3.0.0/CloudStreamPC-3.0.0-linux-x64.tar.xz
+        sha256: REPLACE_WITH_SHA256_FROM_SHA256SUMS
+        strip-components: 0
+      - type: file
+        path: ../linux/cloudstreampc.desktop
+      - type: file
+        path: ../../icons/icon.png

@@ -135,7 +135,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         val items = when (account.type) {
             IptvType.XTREAM -> loadXtream()
             IptvType.M3U -> loadM3u()
-        }.filter { Store.settings.nsfw || !adultPattern.containsMatchIn(it.category) }
+        }.filter { com.cloudstreampc.core.Parental.nsfwAllowed || !adultPattern.containsMatchIn(it.category) }
         categories = items.map { it.kind to it.category }.distinct()
         catalog = items
         Logger.info("IPTV ${account.name} : ${items.size} éléments, ${categories.size} catégories")

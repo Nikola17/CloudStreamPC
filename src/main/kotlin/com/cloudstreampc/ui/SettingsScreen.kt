@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -48,11 +49,12 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "2.9.0"
+const val APP_VERSION = "3.0.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
 fun SettingsScreen() {
+    if (!ParentalGate()) return
     val nav = LocalNavigator.current
     val profile = Store.profile
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 32.dp)) {
@@ -115,6 +117,7 @@ fun Avatar(profile: Profile, sizeDp: Int) {
 /** A settings sub-page with its back button. */
 @Composable
 fun SettingsPageScreen(page: SettingsPage) {
+    if (!ParentalGate()) return
     val nav = LocalNavigator.current
     when (page) {
         SettingsPage.Extensions -> ExtensionsScreen(onBack = { nav.back() })
@@ -263,4 +266,20 @@ fun InfoDialog(title: String, onDismiss: () -> Unit, content: @Composable Column
         text = { Column(Modifier.width(620.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = content) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
     )
+}
+
+/** In a child profile, the settings open with the parental code. Returns whether they may be shown. */
+@Composable
+fun ParentalGate(): Boolean {
+    val code = Store.settings.parentalPin
+    if (!Store.profile.kids || code == null || com.cloudstreampc.core.Parental.unlocked) return true
+    val nav = LocalNavigator.current
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Lock, null, modifier = Modifier.size(48.dp), tint = CsColors.TextMuted)
+            Text("Profil enfant : les paramètres demandent le code parental.", modifier = Modifier.padding(16.dp))
+        }
+    }
+    PinCheckDialog(code, "Code parental", onDismiss = { nav.select(Tab.Home) }) { com.cloudstreampc.core.Parental.unlocked = true }
+    return false
 }

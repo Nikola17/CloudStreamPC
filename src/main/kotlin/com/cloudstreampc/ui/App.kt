@@ -105,6 +105,7 @@ fun App(nav: Navigator) {
                                     is Route.Category -> CategoryScreen(route)
                                     is Route.Settings -> SettingsPageScreen(route.page)
                                     Route.TvGuide -> TvGuideScreen()
+                                    Route.Stats -> StatsScreen()
                                 }
                             }
                         }

@@ -29,6 +29,8 @@ data class Enriched(
     val similar: List<SimilarTitle> = emptyList(),
     /** By "season:episode". */
     val episodes: Map<String, EpisodeExtra> = emptyMap(),
+    /** Age rating from TMDB (France first, then the United States). */
+    val certification: String? = null,
 ) {
     fun episode(season: Int?, episode: Int?) = if (episode == null) null else episodes["${season ?: 1}:$episode"]
 }
@@ -87,7 +89,8 @@ object Enrichment {
             val yearParam = response.year?.let { if (type == "movie") "&year=$it" else "&first_air_date_year=$it" }.orEmpty()
             tmdb("search/$type?query=$query$yearParam", key).path("results").firstOrNull()?.path("id")?.asInt(0)?.takeIf { it > 0 }
         } ?: return@coroutineScope base
-        val details = tmdb("$type/$id?append_to_response=credits,recommendations", key)
+        val details = tmdb("$type/$id?append_to_response=credits,recommendations,${if (type == "movie") "release_dates" else "content_ratings"}", key)
+        val certification = certificationOf(details, type)
         val cast = details.path("credits").path("cast").take(20).map {
             Person(
                 it.path("name").asText(),
@@ -128,7 +131,20 @@ object Enrichment {
                 EpisodeExtra(v.title ?: fallback?.title, v.overview ?: fallback?.overview, v.thumbnail ?: fallback?.thumbnail)
             },
             background = base.background ?: details.path("backdrop_path").asText().takeIf { it.startsWith("/") }?.let { "$IMAGES/w1280$it" },
+            certification = certification ?: base.certification,
         )
+    }
+
+    /** "release_dates" (films) or "content_ratings" (series) of TMDB: France, then the United States. */
+    internal fun certificationOf(details: JsonNode, type: String): String? {
+        val byCountry = if (type == "movie") {
+            details.path("release_dates").path("results").associate { country ->
+                country.path("iso_3166_1").asText() to country.path("release_dates").map { it.path("certification").asText() }.firstOrNull { it.isNotBlank() }
+            }
+        } else {
+            details.path("content_ratings").path("results").associate { it.path("iso_3166_1").asText() to it.path("rating").asText().ifBlank { null } }
+        }
+        return listOf("FR", "US", "GB", "DE").firstNotNullOfOrNull { byCountry[it] }
     }
 
     fun clear() = synchronized(cache) { cache.clear() }

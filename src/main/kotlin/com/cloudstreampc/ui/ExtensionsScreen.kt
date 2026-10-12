@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -270,6 +271,22 @@ private fun PluginRow(
             Text(name, fontWeight = FontWeight.SemiBold)
             description?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 13.sp, color = CsColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             Text(details, fontSize = 12.sp, color = CsColors.TextMuted)
+            // Weekly check: a site of this extension no longer answers.
+            val broken = installed?.let { PluginManager.providersOf(it.internalName) }.orEmpty()
+                .mapNotNull { api -> com.cloudstreampc.plugins.ExtensionHealth.results[api.name]?.takeIf { !it.ok }?.let { api.name to it } }
+            broken.forEach { (site, result) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        "En panne",
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(CsColors.Error).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                    Text(
+                        "  $site : ${result.detail ?: ""}",
+                        fontSize = 12.sp, color = CsColors.Error, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             when (state) {
                 is PluginState.Failed -> Text("Erreur de chargement : ${state.reason}", fontSize = 12.sp, color = CsColors.Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 PluginState.Loaded -> Text("Installée et active (v${installed.version})", fontSize = 12.sp, color = CsColors.Good)

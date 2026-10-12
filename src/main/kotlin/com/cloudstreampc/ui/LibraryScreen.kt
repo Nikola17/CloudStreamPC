@@ -72,6 +72,7 @@ fun LibraryScreen() {
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Bibliothèque") {
+            TextButton(onClick = { nav.push(Route.Stats) }) { Text("Statistiques") }
             if (section == "history" && library.history.isNotEmpty()) {
                 TextButton(onClick = { Store.clearHistory() }) { Text("Effacer l'historique") }
             }

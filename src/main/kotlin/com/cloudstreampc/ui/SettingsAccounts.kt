@@ -3,6 +3,8 @@ package com.cloudstreampc.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -206,6 +208,19 @@ fun AccountSettings() {
             onSave = { pin -> Store.updateSettings { it.copy(appPin = pin) }; pinDialog = false },
         )
     }
+    var parentalDialog by remember { mutableStateOf(false) }
+    SettingsItem(
+        "Code parental",
+        if (s.parentalPin != null) "Demandé pour quitter un profil enfant et ouvrir ses paramètres"
+        else "Pas encore défini (il se règle en créant un profil enfant)",
+    ) { parentalDialog = true }
+    if (parentalDialog) {
+        PinSetupDialog(
+            current = s.parentalPin,
+            onDismiss = { parentalDialog = false },
+            onSave = { pin -> Store.updateSettings { it.copy(parentalPin = pin) }; parentalDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -253,7 +268,7 @@ fun ProfileSettings() {
                         .border(3.dp, if (profile.id == s.currentProfile) Color.White else Color.Transparent, CircleShape)
                         .clickable {
                             if (profile.id == s.currentProfile) return@clickable
-                            if (profile.pin != null) unlocking = profile else {
+                            if (com.cloudstreampc.core.Parental.codeFor(profile) != null) unlocking = profile else {
                                 Store.switchProfile(profile.id); nav.toast("Profil : ${profile.name}")
                             }
                         }
@@ -289,7 +304,7 @@ fun ProfileSettings() {
         }
     }
     unlocking?.let { profile ->
-        PinCheckDialog(profile.pin!!, "Code du profil ${profile.name}", onDismiss = { unlocking = null }) {
+        PinCheckDialog(com.cloudstreampc.core.Parental.codeFor(profile)!!, "Code du profil ${profile.name}", onDismiss = { unlocking = null }) {
             Store.switchProfile(profile.id)
             unlocking = null
         }
@@ -302,11 +317,17 @@ private fun ProfileEditDialog(profile: Profile, onDismiss: () -> Unit, onSave: (
     var name by remember { mutableStateOf(profile.name) }
     var color by remember { mutableStateOf(profile.color) }
     var pin by remember { mutableStateOf(profile.pin.orEmpty()) }
+    var kids by remember { mutableStateOf(profile.kids) }
+    var maxAge by remember { mutableStateOf(profile.maxAge) }
+    var blockUnrated by remember { mutableStateOf(profile.blockUnrated) }
+    var hidden by remember { mutableStateOf(profile.hiddenProviders) }
+    val needsParentalCode = kids && Store.settings.parentalPin == null
+    var parentalCode by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (profile.name.isEmpty()) "Nouveau profil" else "Modifier le profil") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(name, { name = it.take(24) }, label = { Text("Nom") }, singleLine = true)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     avatarColors.forEach { c ->
@@ -321,10 +342,56 @@ private fun ProfileEditDialog(profile: Profile, onDismiss: () -> Unit, onSave: (
                     pin, { pin = it.filter(Char::isDigit).take(8) }, label = { Text("Code du profil (facultatif)") },
                     singleLine = true, visualTransformation = PasswordVisualTransformation(),
                 )
+                // Parental control.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Profil enfant")
+                        Text(
+                            "Titres trop âgés et contenu NSFW cachés ; pour en sortir ou ouvrir les paramètres, il faut le code parental",
+                            color = CsColors.TextMuted, fontSize = 12.sp,
+                        )
+                    }
+                    Switch(kids, { kids = it })
+                }
+                if (kids) {
+                    Text("Âge maximum", color = CsColors.TextMuted, fontSize = 13.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(6, 10, 12, 14, 16).forEach { age ->
+                            FilterChip(maxAge == age, { maxAge = age }, { Text(I18n.tr("{} ans").replace("{}", age.toString())) })
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Bloquer les titres sans âge connu", Modifier.weight(1f), fontSize = 14.sp)
+                        Switch(blockUnrated, { blockUnrated = it })
+                    }
+                    val providers = com.cloudstreampc.plugins.PluginManager.providers.map { it.name }.distinct().sorted()
+                    if (providers.isNotEmpty()) {
+                        Text("Extensions masquées dans ce profil", color = CsColors.TextMuted, fontSize = 13.sp)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            providers.forEach { p -> FilterChip(p in hidden, { hidden = if (p in hidden) hidden - p else hidden + p }, { Text(p) }) }
+                        }
+                    }
+                    if (needsParentalCode) {
+                        OutlinedTextField(
+                            parentalCode, { parentalCode = it.filter(Char::isDigit).take(8) },
+                            label = { Text("Code parental (4 à 8 chiffres)") }, singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            supportingText = { Text("Demandé pour quitter un profil enfant et ouvrir les paramètres") },
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(profile.copy(name = name.trim(), color = color, pin = pin.ifBlank { null })) }) {
+            TextButton(enabled = name.isNotBlank() && (!needsParentalCode || parentalCode.length >= 4), onClick = {
+                if (needsParentalCode) Store.updateSettings { it.copy(parentalPin = parentalCode) }
+                onSave(
+                    profile.copy(
+                        name = name.trim(), color = color, pin = pin.ifBlank { null },
+                        kids = kids, maxAge = maxAge, blockUnrated = blockUnrated, hiddenProviders = hidden,
+                    ),
+                )
+            }) {
                 Text("Enregistrer")
             }
         },

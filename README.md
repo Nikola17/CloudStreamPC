@@ -25,13 +25,27 @@ Téléchargez `CloudStreamPC-x.y.z-amd64.deb` (Ubuntu, Debian, Mint…) ou `Clou
 (Fedora, openSUSE…) et ouvrez-le, ou `sudo apt install ./CloudStreamPC-x.y.z-amd64.deb`. Sans paquet :
 `CloudStreamPC-x.y.z-linux-x64.tar.xz`, à décompresser, puis lancez `CloudStreamPC/bin/CloudStreamPC`.
 Installez aussi mpv : `sudo apt install mpv` (ou `sudo dnf install mpv`).
+**AppImage** (toutes distributions) : `CloudStreamPC-x.y.z-x86_64.AppImage`, puis `chmod +x` et lancez-le (mpv du système).
+**Flatpak** : le manifeste `packaging/flatpak/io.github.nikola17.CloudStreamPC.yml` (mpv inclus) se construit avec
+`flatpak-builder` ; il n'est pas encore publié sur Flathub (soumission à faire avec votre compte).
 
-### macOS (Apple Silicon)
+### Windows sur ARM, winget et Scoop
 
-Ouvrez `CloudStreamPC-x.y.z-macos-arm64.dmg` et glissez CloudStreamPC dans Applications, puis installez mpv
+PC à processeur ARM (Snapdragon…) : `CloudStreamPC-x.y.z-arm64-setup.exe` quand la release en contient un
+(la compilation ARM est tentée à chaque version ; si elle échoue, la version x64 fonctionne aussi par émulation).
+Chaque release contient `CloudStreamPC-x.y.z-manifests.zip` avec les manifestes **winget** (`winget/…`) et
+**Scoop** (`scoop/cloudstreampc.json`), déjà remplis avec les adresses et empreintes. Pour que
+`winget install Nikola17.CloudStreamPC` fonctionne, il faut les proposer une fois au dépôt
+[winget-pkgs](https://github.com/microsoft/winget-pkgs) (pull request avec votre compte GitHub, ou
+`wingetcreate submit`) ; pour Scoop, mettre `cloudstreampc.json` dans un dépôt « bucket » à vous
+(`scoop bucket add cloudstreampc https://github.com/<vous>/scoop-bucket`, puis `scoop install cloudstreampc`).
+
+### macOS (Apple Silicon et Intel)
+
+Ouvrez `CloudStreamPC-x.y.z-macos-arm64.dmg` (Apple Silicon) ou `-macos-x64.dmg` (Intel) et glissez CloudStreamPC dans Applications, puis installez mpv
 (`brew install mpv`, ou l'application mpv dans Applications). L'application n'est pas notariée par Apple :
 au premier lancement, faites un clic droit sur CloudStreamPC → **Ouvrir** (ou
-`xattr -cr /Applications/CloudStreamPC.app`). Pas de version pour les Mac Intel pour l'instant.
+`xattr -cr /Applications/CloudStreamPC.app`).
 
 ### Mises à jour
 
@@ -97,6 +111,24 @@ direct restent les mêmes. Le plein écran (touche `F`, double-clic ou bouton) a
 `Échap` en sort. **Image dans l'image** (bouton ou `Ctrl+P`) : la fenêtre devient un petit lecteur toujours
 au-dessus des autres, en bas à droite, déplaçable et redimensionnable. Désactivable dans Paramètres → Lecteur
 (mpv rouvre alors sa propre fenêtre). Sous macOS, mpv garde sa fenêtre ; `Ctrl+P` y fait aussi l'image dans l'image.
+
+**Téléchargements** : un film, un épisode ou **toute une saison** (bouton « Télécharger la saison ») ;
+sous-titres des langues préférées enregistrés à côté de la vidéo ; **limite de débit** (500 Ko/s à 10 Mo/s)
+pour ne pas gêner le reste de la maison ; **heures creuses** (par exemple 1 h → 7 h) : les téléchargements
+attendent la plage et s'arrêtent à sa fin pour reprendre ensuite là où ils en étaient.
+
+**Contrôle parental** (Profils → modifier un profil → « Profil enfant ») : âge maximum (6 à 16 ans) lu sur
+l'extension puis sur TMDB (classification française d'abord), titres sans âge connu bloqués si vous le
+choisissez, contenu NSFW et chaînes adultes cachés, extensions masquées au choix. Pour quitter le profil enfant
+ou ouvrir les paramètres, il faut le **code parental**.
+
+**Statistiques et « Ton année »** (Bibliothèque → Statistiques) : temps réellement passé devant les vidéos
+(pauses et avances rapides non comptées), films, épisodes, séries terminées, TV en direct, titres et genres
+les plus regardés, mois par mois, jours d'affilée. Gardées sur le PC, par profil.
+
+**Santé des extensions** : chaque semaine, chaque site est testé (une recherche, sinon sa page d'accueil) ; un
+site qui ne répond plus porte un badge **« En panne »** dans Extensions, avec la raison. « Tester toutes les
+extensions » (Paramètres → Fournisseurs) relance le test.
 
 **Apparence des sous-titres** (Paramètres → Lecteur) : taille, couleur, gras, contour, fond, position et décalage,
 avec un aperçu.
@@ -258,7 +290,16 @@ variables → Actions) ; la compilation signe alors automatiquement :
 
 Tout est prêt côté compilation : il ne manque que le certificat, qui doit être acheté et établi au nom de
 son propriétaire (environ 100 à 400 € par an selon l'autorité ; Azure Trusted Signing est l'option la moins chère).
-Pour macOS, la notarisation demande un compte Apple Developer (99 $ par an).
+Pour macOS, la notarisation demande un compte Apple Developer (99 $ par an). Tout est prêt aussi : avec les
+secrets `MACOS_CERTIFICATE` (certificat « Developer ID Application » exporté en .p12, en base64),
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` (mot de passe d'application
+créé sur appleid.apple.com), la compilation signe l'application et les bibliothèques de ses jars avec le
+runtime renforcé (`packaging/macos/entitlements.plist`), fait notarier le `.dmg` par Apple et y agrafe le ticket :
+plus d'avertissement au premier lancement.
+
+**Tests automatiques** : à chaque version, l'application compilée est lancée sur Windows, Linux et macOS en
+mode test (`--smoke-test`) ; elle parcourt ses écrans, joue une image de test dans sa fenêtre et enregistre
+une capture de chaque écran (artefacts `captures-…` de la compilation). La publication s'arrête si elle plante.
 
 Sans certificat, les fichiers ne sont pas signés ; leurs empreintes SHA-256 sont publiées dans
 `SHA256SUMS.txt` avec chaque version. Le lancement manuel de la compilation propose un test de la chaîne
@@ -288,6 +329,10 @@ de signature avec un certificat jetable (sans publier de version).
   la version suivante) peut être nécessaire.
 - La vidéo dans la fenêtre n'existe pas sous macOS (le système ne permet pas à mpv de dessiner dans la fenêtre
   d'une autre application). Sous Linux, elle demande X11 ou XWayland (cas par défaut).
+- L'âge conseillé dépend de ce que donnent l'extension ou TMDB (avec une clé TMDB) : sans l'un ou l'autre, un titre
+  passe, sauf si « Bloquer les titres sans âge connu » est activé.
+- Les versions Windows ARM, Mac Intel, AppImage et Flatpak sont compilées automatiquement mais n'ont pas été
+  essayées sur de vraies machines ; le Flatpak n'est pas encore sur Flathub.
 - Pendant la lecture dans la fenêtre, les menus de l'application sont cachés sous la vidéo : « Retour » ou la fin
   de la vidéo les rend.
 - Sous macOS et Linux, mpv n'est pas inclus : il faut l'installer (voir Installation). Les versions macOS et

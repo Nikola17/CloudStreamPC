@@ -86,7 +86,7 @@ private fun DownloadRow(item: DownloadItem, onPlay: () -> Unit) {
             Text(item.title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             item.episodeLabel?.let { Text(it, color = CsColors.TextMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             val status = when (item.status) {
-                DownloadStatus.QUEUED -> "En attente"
+                DownloadStatus.QUEUED -> item.note ?: "En attente"
                 DownloadStatus.RUNNING -> "Téléchargement · ${(item.progress * 100).toInt()} %"
                 DownloadStatus.PAUSED -> "En pause · ${(item.progress * 100).toInt()} %"
                 DownloadStatus.DONE -> "Terminé"

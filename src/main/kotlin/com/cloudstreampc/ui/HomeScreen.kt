@@ -95,7 +95,8 @@ fun visibleProviders(): List<MainAPI> {
     val settings = Store.settings
     return PluginManager.providers.filter { api ->
         (settings.providerLanguages.isEmpty() || api.lang in settings.providerLanguages || api.sourcePlugin == "builtin") &&
-            (settings.nsfw || TvType.NSFW !in api.supportedTypes) &&
+            (com.cloudstreampc.core.Parental.nsfwAllowed || TvType.NSFW !in api.supportedTypes) &&
+            api.name !in Store.profile.hiddenProviders &&
             (settings.preferredMedia.isEmpty() || api.supportedTypes.any { it.name in settings.preferredMedia })
     }
 }

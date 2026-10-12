@@ -87,7 +87,7 @@ private fun WhoIsWatching(onDone: () -> Unit) {
             Store.settings.profiles.forEach { profile ->
                 Column(
                     Modifier.clip(RoundedCornerShape(12.dp)).clickable {
-                        if (profile.pin != null) unlocking = profile else {
+                        if (com.cloudstreampc.core.Parental.codeFor(profile) != null) unlocking = profile else {
                             Store.switchProfile(profile.id); onDone()
                         }
                     }.padding(12.dp),
@@ -100,7 +100,7 @@ private fun WhoIsWatching(onDone: () -> Unit) {
         }
     }
     unlocking?.let { profile ->
-        PinCheckDialog(profile.pin!!, "Code du profil ${profile.name}", onDismiss = { unlocking = null }) {
+        PinCheckDialog(com.cloudstreampc.core.Parental.codeFor(profile)!!, "Code du profil ${profile.name}", onDismiss = { unlocking = null }) {
             Store.switchProfile(profile.id)
             onDone()
         }

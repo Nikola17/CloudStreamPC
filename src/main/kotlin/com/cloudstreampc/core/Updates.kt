@@ -41,7 +41,7 @@ object Updates {
 
     /** Release files that install this version here, best first (names given by the build, see build.yml). */
     internal fun installerNames(version: String): List<String> = when {
-        isWindows -> listOf("CloudStreamPC-$version-setup.exe")
+        isWindows -> listOf(if ("aarch64" in arch || "arm64" in arch) "CloudStreamPC-$version-arm64-setup.exe" else "CloudStreamPC-$version-setup.exe")
         isMac -> listOf(if ("aarch64" in arch || "arm64" in arch) "CloudStreamPC-$version-macos-arm64.dmg" else "CloudStreamPC-$version-macos-x64.dmg")
         File("/usr/bin/dpkg").exists() -> listOf("CloudStreamPC-$version-amd64.deb")
         File("/usr/bin/rpm").exists() -> listOf("CloudStreamPC-$version-x86_64.rpm")
