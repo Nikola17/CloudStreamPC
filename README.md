@@ -91,6 +91,22 @@ bouton « +85 s ». Par-dessus, les boutons de CloudStreamPC :
   connu, sinon à la fin de l'épisode). L'épisode suivant se charge **dans la même fenêtre**, sans quitter le
   plein écran, avec sa meilleure source. Touche `N` ou bouton de la barre de contrôle à tout moment.
 
+**Vidéo dans la fenêtre** (Windows et Linux) : la vidéo s'affiche dans la fenêtre de l'application, avec une
+barre en haut (retour, image dans l'image, plein écran) ; l'interface du lecteur, les boutons et le relais du
+direct restent les mêmes. Le plein écran (touche `F`, double-clic ou bouton) agrandit la fenêtre de l'application ;
+`Échap` en sort. **Image dans l'image** (bouton ou `Ctrl+P`) : la fenêtre devient un petit lecteur toujours
+au-dessus des autres, en bas à droite, déplaçable et redimensionnable. Désactivable dans Paramètres → Lecteur
+(mpv rouvre alors sa propre fenêtre). Sous macOS, mpv garde sa fenêtre ; `Ctrl+P` y fait aussi l'image dans l'image.
+
+**Apparence des sous-titres** (Paramètres → Lecteur) : taille, couleur, gras, contour, fond, position et décalage,
+avec un aperçu.
+
+**Télécommande avec le téléphone** (Paramètres → Lecteur) : scannez le code QR avec le téléphone, sur le même
+réseau Wi-Fi (ou ouvrez l'adresse affichée et tapez le code à 4 chiffres). Lecture/pause, ±10 s, +85 s, volume,
+sous-titres, piste audio, plein écran, épisode suivant, et en direct chaîne précédente/suivante. Rien ne passe
+par Internet. Seuls les appareils du réseau local sont acceptés, avec le code, qui change à chaque démarrage.
+Après 5 codes faux, il faut attendre une minute.
+
 **TV en direct sans coupure** : les chaînes IPTV passent par un relais intégré à l'application. Quand le flux
 du fournisseur coupe, se fige ou renvoie une erreur, le relais se reconnecte en une fraction de seconde et
 recolle le flux ; le lecteur garde quelques secondes d'avance (réglage « Tampon du direct » : 3, 8 ou 20 s)
@@ -270,6 +286,10 @@ de signature avec un certificat jetable (sans publier de version).
 - Les traductions traduisent l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
 - Les bandes-annonces passent par YouTube : si YouTube change, une mise à jour de yt-dlp (incluse dans
   la version suivante) peut être nécessaire.
+- La vidéo dans la fenêtre n'existe pas sous macOS (le système ne permet pas à mpv de dessiner dans la fenêtre
+  d'une autre application). Sous Linux, elle demande X11 ou XWayland (cas par défaut).
+- Pendant la lecture dans la fenêtre, les menus de l'application sont cachés sous la vidéo : « Retour » ou la fin
+  de la vidéo les rend.
 - Sous macOS et Linux, mpv n'est pas inclus : il faut l'installer (voir Installation). Les versions macOS et
   Linux sont compilées et testées automatiquement mais ont été moins essayées que la version Windows.
 
@@ -289,7 +309,8 @@ de signature avec un certificat jetable (sans publier de version).
 
 ## Composants inclus
 
-[mpv](https://mpv.io) (GPL), [uosc](https://github.com/tomasklaen/uosc) 5.9.2 (LGPL-2.1, non modifié),
+[mpv](https://mpv.io) (GPL), [uosc](https://github.com/tomasklaen/uosc) 5.9.2 (LGPL-2.1, avec une correction :
+délai d'animation borné, voir `VERSION.txt`), [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT),
 téléchargés au premier besoin : [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) et [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
 [JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), [Jamepad](https://github.com/libgdx/Jamepad) et SDL2 (Apache-2.0 / zlib), polices Outfit et Inter (SIL OFL), bibliothèque
 CloudStream (GPL-3.0).

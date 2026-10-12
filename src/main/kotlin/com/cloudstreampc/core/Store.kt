@@ -94,6 +94,21 @@ data class Settings(
     val subtitleLanguages: String = "fr,fre,fra,french",
     val audioLanguages: String = "fr,fre,fra,french",
     val subtitleSize: Int = 55,
+    /** Subtitle look (ARGB colors), see "Sous-titres". */
+    val subtitleColor: Long = 0xFFFFFFFF,
+    val subtitleOutlineColor: Long = 0xFF000000,
+    val subtitleOutlineSize: Double = 3.0,
+    /** Dark box behind the text, opacity in % (0: none). */
+    val subtitleBackground: Int = 0,
+    /** mpv's sub-pos: 100 at the bottom, lower is higher on the picture. */
+    val subtitlePosition: Int = 100,
+    val subtitleBold: Boolean = false,
+    /** Seconds, positive shows them later. */
+    val subtitleDelay: Double = 0.0,
+    /** The video plays inside the app's window (Windows, Linux) instead of a window of its own. */
+    val embeddedPlayer: Boolean = true,
+    /** Phone remote: a page on the local network that drives the player. */
+    val remoteControl: Boolean = false,
     /** Modern controls (uosc) and the "Passer l'intro" / "Épisode suivant" buttons in the bundled mpv. */
     val playerInterface: Boolean = true,
     val skipIntroButton: Boolean = true,

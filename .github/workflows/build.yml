@@ -63,8 +63,8 @@ jobs:
           Get-ChildItem app-resources/windows/mpv | Format-Table Name, Length
 
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
-      - name: Test mpv IPC on Windows
-        run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
+      - name: Test mpv on Windows (IPC, video in the window, remote)
+        run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" --tests "com.cloudstreampc.EmbeddedPlayerTest" --tests "com.cloudstreampc.RemoteControlTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
 
       # Release build (unused parts of Compose removed), then jars stored for the installer's LZMA.
       - name: Build the app
@@ -126,14 +126,16 @@ jobs:
 
       - name: Packaging tools
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q fakeroot rpm
+          sudo apt-get update -q && sudo apt-get install -y -q fakeroot rpm mpv xvfb
           # xz for the .rpm too (rpmbuild's default compresses less).
           echo '%_binary_payload w9.xzdio' >> ~/.rpmmacros
 
       - name: Tests and app
         run: |
-          # The extensions' WebView is tested with the runner's Chrome.
-          ./gradlew --no-daemon test createReleaseDistributable "-Dtest.browser=$(command -v google-chrome || echo none)"
+          # The extensions' WebView is tested with the runner's Chrome; the video inside the window
+          # with mpv on a virtual screen.
+          xvfb-run -a -s "-screen 0 1600x1000x24" ./gradlew --no-daemon test "-Dtest.browser=$(command -v google-chrome || echo none)"
+          ./gradlew --no-daemon createReleaseDistributable
           python3 scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC linux
 
       # mpv comes from the system (apt install mpv); the torrent engine and yt-dlp download on first use.

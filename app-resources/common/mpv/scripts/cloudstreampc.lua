@@ -12,6 +12,7 @@ local opts = {
     auto_skip = false,
     skip_button = true,
     live = false,         -- live TV: the end of the stream means "reconnect", never "quit"
+    embedded = false,     -- drawn inside the app's window: the app handles picture in picture
 }
 options.read_options(opts, 'cloudstreampc')
 
@@ -344,3 +345,26 @@ mp.add_key_binding('c', 'cspc-channel-list', function()
 end)
 
 mp.add_periodic_timer(0.2, render)
+
+-- Picture in picture. Inside the app's window the app shrinks it; in mpv's own window, a small
+-- always-on-top window in the bottom-right corner (and back).
+local pip = { on = false, fullscreen = false }
+local function toggle_pip()
+    if opts.embedded then
+        mp.commandv('script-message', 'cspc-pip')
+        return
+    end
+    pip.on = not pip.on
+    if pip.on then
+        pip.fullscreen = mp.get_property_bool('fullscreen', false)
+        mp.set_property_bool('fullscreen', false)
+        mp.set_property_bool('ontop', true)
+        mp.set_property('geometry', '30%-24-64')
+    else
+        mp.set_property_bool('ontop', false)
+        mp.set_property('geometry', '70%+50%+50%')
+        if pip.fullscreen then mp.set_property_bool('fullscreen', true) end
+    end
+end
+mp.register_script_message('pip', toggle_pip)
+mp.add_key_binding('Ctrl+p', 'cspc-pip', toggle_pip)

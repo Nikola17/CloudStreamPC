@@ -70,6 +70,7 @@ fun main(args: Array<String>) {
             runCatching { PluginManager.updateAll() }.onFailure { Logger.error("Mise à jour des extensions", it) }
         }
         com.cloudstreampc.core.EpisodeWatcher.start()
+        com.cloudstreampc.player.RemoteControl.applySettings()
         com.cloudstreampc.sync.FolderSync.start()
         com.cloudstreampc.ui.GamepadInput.start()
         Backup.autoBackupIfDue()
@@ -78,6 +79,7 @@ fun main(args: Array<String>) {
 
     application {
         val state = rememberWindowState(width = 1360.dp, height = 860.dp, placement = WindowPlacement.Maximized)
+        com.cloudstreampc.player.PlayerSurface.window = state
         val nav = rememberNavigator()
         var confirmExit by remember { mutableStateOf(false) }
 
@@ -148,17 +150,27 @@ fun main(args: Array<String>) {
                 }
             },
             state = state,
+            // Picture in picture: the small player stays above the other windows.
+            alwaysOnTop = com.cloudstreampc.player.PlayerSurface.pip,
             title = "CloudStream",
             icon = painterResource("icon.png"),
             onPreviewKeyEvent = { event ->
                 val back = event.key == Key.Escape || (event.isAltPressed && event.key == Key.DirectionLeft)
-                if (back && event.type == KeyEventType.KeyDown) nav.back() else false
+                val surface = com.cloudstreampc.player.PlayerSurface
+                when {
+                    !back || event.type != KeyEventType.KeyDown -> false
+                    // Escape leaves full screen / picture in picture first; the pages under the video don't move.
+                    surface.fullscreen -> true.also { surface.switchFullscreen(false) }
+                    surface.pip -> true.also { surface.switchPip(false) }
+                    surface.active -> true
+                    else -> nav.back()
+                }
             },
         ) {
             // Mouse "back" button (button 4) navigates back, like in a browser.
             DisposableEffect(Unit) {
                 val listener = AWTEventListener { e ->
-                    if (e is MouseEvent && e.id == MouseEvent.MOUSE_RELEASED && e.button == backButton) nav.back()
+                    if (e is MouseEvent && e.id == MouseEvent.MOUSE_RELEASED && e.button == backButton && !com.cloudstreampc.player.PlayerSurface.active) nav.back()
                 }
                 Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK)
                 onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(listener) }

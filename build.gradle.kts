@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "2.8.0"
+version = "2.9.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -43,6 +43,8 @@ dependencies {
     implementation("org.jsoup:jsoup:1.22.1")
     // mDNS discovery of Chromecasts (the cast protocol itself is in cast/Chromecast.kt).
     implementation("org.jmdns:jmdns:3.6.4")
+    // QR code of the phone remote (30 Ko).
+    implementation("io.nayuki:qrcodegen:1.8.0")
     // Gamepads (SDL, natives included for Windows, Linux and macOS).
     implementation("com.badlogicgames.jamepad:jamepad:2.30.0.0")
 

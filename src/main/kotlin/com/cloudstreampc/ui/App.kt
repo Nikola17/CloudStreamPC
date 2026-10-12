@@ -84,6 +84,7 @@ fun App(nav: Navigator) {
                 },
                 color = CsColors.Background,
             ) {
+                Box(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxSize()) {
                     if (!(HomeState.cinema && nav.tab == Tab.Home && nav.stack.isEmpty())) Sidebar(nav)
                     Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -110,6 +111,9 @@ fun App(nav: Navigator) {
                         PlaybackOverlays(Modifier.align(Alignment.BottomStart))
                         SnackbarHost(nav.snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                     }
+                }
+                // The video inside the window, above everything (the pages stay as they were underneath).
+                if (com.cloudstreampc.player.PlayerSurface.active) EmbeddedPlayer()
                 }
             }
         }

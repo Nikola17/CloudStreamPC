@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "2.8.0"
+const val APP_VERSION = "2.9.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
@@ -72,7 +72,13 @@ fun SettingsScreen() {
             CategoryRow(page.title) { nav.push(Route.Settings(page)) }
         }
         Text(
-            "$APP_VERSION  •  CloudStream library 4846fba  •  Windows",
+            "$APP_VERSION  •  CloudStream library 4846fba  •  " + System.getProperty("os.name").let { os ->
+                when {
+                    os.startsWith("Windows") -> "Windows"
+                    os.startsWith("Mac") -> "macOS"
+                    else -> "Linux"
+                }
+            },
             color = Color(0xFFDDDDDD), fontSize = 18.sp,
             modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,

@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import java.io.File
+import kotlinx.coroutines.launch
 
 /** Plays links in mpv (bundled with the Windows build) or VLC, passing the headers the hosts require. */
 object ExternalPlayer {
@@ -37,6 +38,7 @@ object ExternalPlayer {
         ipcPath: String? = null,
         hasNext: Boolean = false,
         live: Boolean = false,
+        wid: Long? = null,
     ): Process {
         val settings = Store.settings
         val kind = settings.player
@@ -48,16 +50,15 @@ object ExternalPlayer {
         val command = mutableListOf(executable.absolutePath)
         when (kind) {
             PlayerKind.MPV -> {
-                command += "--force-window=immediate"
                 command += "--force-media-title=$title"
-                if (settings.fullscreen) command += "--fs"
+                command += windowArgs(wid)
                 if (startAt != null) command += "--start=+${startAt.toInt()}"
                 if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
-                command += interfaceArgs(hasNext, live)
+                command += interfaceArgs(hasNext, live, embedded = wid != null)
                 if (live) command += liveArgs()
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
-                command += "--sub-font-size=${settings.subtitleSize}"
+                command += subtitleArgs()
                 if (settings.playbackSpeed != 1.0) command += "--speed=${settings.playbackSpeed}"
                 command += "--user-agent=$userAgent"
                 if (referer != null) command += "--referrer=$referer"
@@ -120,7 +121,7 @@ object ExternalPlayer {
         )
     }
 
-    fun interfaceArgs(hasNext: Boolean, live: Boolean = false): List<String> {
+    fun interfaceArgs(hasNext: Boolean, live: Boolean = false, embedded: Boolean = false): List<String> {
         val settings = Store.settings
         val dir = scriptsDir()
         if (settings.player != PlayerKind.MPV || !settings.playerInterface || dir == null) return emptyList()
@@ -143,6 +144,7 @@ object ExternalPlayer {
                 add("command:skip_next:script-message-to cloudstreampc zap 1?Chaîne suivante (Page suiv.)")
             }
             add("gap")
+            add("command:picture_in_picture_alt:script-message-to cloudstreampc pip?Image dans l'image (Ctrl+P)")
             add("fullscreen")
         }.joinToString(",")
         val accent = String.format("%06x", settings.primaryColor and 0xFFFFFF)
@@ -162,6 +164,7 @@ object ExternalPlayer {
             "--script-opts-append=uosc-timeline_style=bar",
             "--script-opts-append=cloudstreampc-has_next=${yesNo(hasNext)}",
             "--script-opts-append=cloudstreampc-live=${yesNo(live)}",
+            "--script-opts-append=cloudstreampc-embedded=${yesNo(embedded)}",
             "--script-opts-append=cloudstreampc-auto_next=${yesNo(settings.autoPlayNextEpisode)}",
             "--script-opts-append=cloudstreampc-auto_skip=${yesNo(settings.autoSkipIntro)}",
             "--script-opts-append=cloudstreampc-skip_button=${yesNo(settings.skipIntroButton)}",
@@ -172,41 +175,104 @@ object ExternalPlayer {
     fun playTrailer(youtubeUrl: String, title: String) {
         val settings = Store.settings
         val executable = findPlayer(settings.player, settings.playerPath) ?: throw PlayerNotFound(settings.player)
-        val command = mutableListOf(executable.absolutePath)
-        if (settings.player == PlayerKind.MPV) {
-            command += "--force-media-title=$title"
-            if (settings.fullscreen) command += "--fs"
-            command += interfaceArgs(hasNext = false)
-            com.cloudstreampc.providers.Trailers.ytDlp()?.let { command += "--script-opts-append=ytdl_hook-ytdl_path=$it" }
-            command += "--ytdl-format=bv*[height<=1080]+ba/b"
-            command += "--"
-        } else if (settings.player == PlayerKind.VLC && settings.fullscreen) {
-            command += "--fullscreen"
-        }
-        command += youtubeUrl
-        ProcessBuilder(command).redirectErrorStream(true)
-            .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()
+        if (settings.player != PlayerKind.MPV) return startOther(executable, youtubeUrl)
+        val options = mutableListOf("--force-media-title=$title")
+        com.cloudstreampc.providers.Trailers.ytDlp()?.let { options += "--script-opts-append=ytdl_hook-ytdl_path=$it" }
+        options += "--ytdl-format=bv*[height<=1080]+ba/b"
+        startMpv(executable, options, youtubeUrl, title)
     }
 
     /** Plays a downloaded file (no headers needed). */
     fun playFile(file: File, title: String) {
         val settings = Store.settings
         val executable = findPlayer(settings.player, settings.playerPath) ?: throw PlayerNotFound(settings.player)
-        val command = mutableListOf(executable.absolutePath)
-        when (settings.player) {
-            PlayerKind.MPV -> {
-                command += "--force-media-title=$title"
-                if (settings.fullscreen) command += "--fs"
-                command += interfaceArgs(hasNext = false)
-                command += "--"
-            }
-            PlayerKind.VLC -> if (settings.fullscreen) command += "--fullscreen"
-            PlayerKind.CUSTOM -> Unit
+        if (settings.player != PlayerKind.MPV) return startOther(executable, file.absolutePath)
+        startMpv(executable, listOf("--force-media-title=$title") + subtitleArgs(), file.absolutePath, title)
+    }
+
+    /** Any address mpv can read (tests use `av://lavfi:` pictures). */
+    internal fun playTarget(target: String, title: String) {
+        val executable = findPlayer(PlayerKind.MPV, Store.settings.playerPath) ?: throw PlayerNotFound(PlayerKind.MPV)
+        startMpv(executable, listOf("--force-media-title=$title"), target, title)
+    }
+
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    /** mpv for a trailer or a file: in the app's window when possible, otherwise in its own. */
+    private fun startMpv(executable: File, options: List<String>, target: String, title: String) {
+        fun start(wid: Long?) {
+            val ipcPath = MpvIpc.newServerPath()
+            val command = listOf(executable.absolutePath) + windowArgs(wid) + "--input-ipc-server=$ipcPath" +
+                interfaceArgs(hasNext = false, embedded = wid != null) + options + "--" + target
+            val process = ProcessBuilder(command).redirectErrorStream(true)
+                .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()
+            if (wid != null) PlayerSurface.follow(process, ipcPath)
+            scope.launch { applySubtitleStyle(ipcPath, process) }
         }
-        command += file.absolutePath
+        if (!PlayerSurface.enabled) return start(null)
+        scope.launch {
+            runCatching { start(PlayerSurface.acquire(title)) }.onFailure { Logger.error("Lecteur", it) }
+        }
+    }
+
+    private fun startOther(executable: File, target: String) {
+        val command = mutableListOf(executable.absolutePath)
+        if (Store.settings.player == PlayerKind.VLC && Store.settings.fullscreen) command += "--fullscreen"
+        command += target
         ProcessBuilder(command).redirectErrorStream(true)
             .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()
     }
+
+    /** Own window (full screen if asked), or drawn inside the app's window ([wid]). */
+    private fun windowArgs(wid: Long?): List<String> = when {
+        wid != null -> listOf("--wid=$wid", "--force-window=immediate")
+        Store.settings.fullscreen -> listOf("--force-window=immediate", "--fs")
+        else -> listOf("--force-window=immediate")
+    }
+
+    /** Subtitle look from "Sous-titres" in the settings (the options every mpv version knows). */
+    fun subtitleArgs(): List<String> {
+        val s = Store.settings
+        return buildList {
+            add("--sub-font-size=${s.subtitleSize}")
+            add("--sub-color=${mpvColor(s.subtitleColor)}")
+            add("--sub-pos=${s.subtitlePosition.coerceIn(0, 150)}")
+            if (s.subtitleBold) add("--sub-bold=yes")
+            if (s.subtitleDelay != 0.0) add("--sub-delay=${s.subtitleDelay}")
+        }
+    }
+
+    /**
+     * Outline and background: their option names changed in mpv 0.38 (sub-border-* became
+     * sub-outline-*, the box became sub-border-style), so they are set once mpv runs, trying the new
+     * names first; an unknown option on the command line would stop mpv from starting.
+     */
+    fun subtitleStyleCommands(): List<List<Any>> {
+        val s = Store.settings
+        val outline = mpvColor(s.subtitleOutlineColor)
+        val box = s.subtitleBackground.coerceIn(0, 100)
+        return buildList {
+            add(listOf("set_property", "sub-outline-color", outline))
+            add(listOf("set_property", "sub-border-color", outline))
+            add(listOf("set_property", "sub-outline-size", s.subtitleOutlineSize))
+            add(listOf("set_property", "sub-border-size", s.subtitleOutlineSize))
+            if (box > 0) {
+                val alpha = (box * 255 / 100).coerceIn(0, 255)
+                add(listOf("set_property", "sub-back-color", "#%02X000000".format(alpha)))
+                add(listOf("set_property", "sub-border-style", "background-box"))
+            }
+        }
+    }
+
+    suspend fun applySubtitleStyle(ipcPath: String, process: Process) {
+        val s = Store.settings
+        val defaults = s.subtitleOutlineColor == 0xFF000000L && s.subtitleOutlineSize == 3.0 && s.subtitleBackground == 0
+        if (defaults) return
+        kotlinx.coroutines.delay(300)
+        if (process.isAlive) MpvIpc.send(ipcPath, *subtitleStyleCommands().toTypedArray())
+    }
+
+    private fun mpvColor(argb: Long) = "#%08X".format(argb and 0xFFFFFFFFL)
 
     fun findPlayer(kind: PlayerKind, customPath: String?): File? {
         customPath?.takeIf { it.isNotBlank() }?.let { File(it) }?.takeIf { it.isFile }?.let { return it }

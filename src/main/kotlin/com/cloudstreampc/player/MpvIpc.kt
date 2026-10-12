@@ -123,6 +123,41 @@ object MpvIpc {
     }
 
     /**
+     * Follows [properties] on its own connection until mpv exits, calling [onChange] with each new
+     * value, and [onEvent] with the other events (`client-message` carries our script's messages).
+     */
+    fun watch(
+        path: String,
+        process: Process,
+        properties: List<String>,
+        onEvent: (name: String, args: List<String>) -> Unit = { _, _ -> },
+        onChange: (name: String, value: com.fasterxml.jackson.databind.JsonNode) -> Unit,
+    ) {
+        val connection = connectWhenReady(path, process, 20_000) ?: return
+        val commands = properties.mapIndexed { i, name -> commandJson(listOf("observe_property", 100 + i, name)) }
+            .joinToString("\n", postfix = "\n").toByteArray()
+        runCatching { connection.output.write(commands); connection.output.flush() }
+        try {
+            connection.input.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                for (line in lines) {
+                    val node = runCatching { mapper.readTree(line) }.getOrNull() ?: continue
+                    when (val event = node.path("event").asText()) {
+                        "" -> continue
+                        "property-change" -> node.get("data")?.let { value ->
+                            runCatching { onChange(node.path("name").asText(), value) }.onFailure { Logger.error("IPC ${node.path("name").asText()}", it) }
+                        }
+                        else -> runCatching { onEvent(event, node.path("args").map { it.asText() }) }.onFailure { Logger.error("IPC $event", it) }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // mpv closed the connection when quitting.
+        } finally {
+            runCatching { connection.closer.close() }
+        }
+    }
+
+    /**
      * Sends commands on a separate, short-lived connection (mpv accepts several clients),
      * waiting for each answer so they run in order. Returns false if mpv could not be reached.
      */
@@ -152,6 +187,30 @@ object MpvIpc {
         } finally {
             runCatching { connection.closer.close() }
         }
+    }
+
+    /** Reads [properties] (missing ones are left out), on a short-lived connection. */
+    fun get(path: String, vararg properties: String): Map<String, com.fasterxml.jackson.databind.JsonNode> {
+        val connection = connectWhenReady(path, null, 1_500) ?: return emptyMap()
+        val values = mutableMapOf<String, com.fasterxml.jackson.databind.JsonNode>()
+        try {
+            properties.forEachIndexed { i, name -> connection.output.write((commandJson(listOf("get_property", name), 2000 + i) + "\n").toByteArray()) }
+            connection.output.flush()
+            val reader = connection.input.bufferedReader(Charsets.UTF_8)
+            var answers = 0
+            while (answers < properties.size) {
+                val line = reader.readLine() ?: break
+                val node = runCatching { mapper.readTree(line) }.getOrNull() ?: continue
+                val index = node.path("request_id").asInt(-1) - 2000
+                if (index !in properties.indices) continue
+                answers++
+                if (node.path("error").asText() == "success") node.get("data")?.let { values[properties[index]] = it }
+            }
+        } catch (_: Exception) {
+        } finally {
+            runCatching { connection.closer.close() }
+        }
+        return values
     }
 
     /** Sends a message to our player script (`cloudstreampc.lua`). */

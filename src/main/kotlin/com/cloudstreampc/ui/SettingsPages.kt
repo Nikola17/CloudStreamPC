@@ -158,6 +158,14 @@ fun PlayerSettings() {
     SettingsSwitch("Lecture automatique de l'épisode suivant", null, s.autoPlayNextEpisode) { v -> Store.updateSettings { it.copy(autoPlayNextEpisode = v) } }
     SettingsSwitch("Mettre à jour la progression", "Reprendre là où vous vous êtes arrêté", s.resumePlayback) { v -> Store.updateSettings { it.copy(resumePlayback = v) } }
     SettingsSwitch("Plein écran", null, s.fullscreen) { v -> Store.updateSettings { it.copy(fullscreen = v) } }
+    if (com.cloudstreampc.player.PlayerSurface.supported && s.player == com.cloudstreampc.core.PlayerKind.MPV) {
+        SettingsSwitch(
+            "Vidéo dans la fenêtre de l'application",
+            "Sinon, mpv s'ouvre dans sa propre fenêtre. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P",
+            s.embeddedPlayer,
+        ) { v -> Store.updateSettings { it.copy(embeddedPlayer = v) } }
+    }
+    RemoteControlItem()
     SettingsChoice(
         "Vitesse de lecture",
         listOf(0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0).map { it to "${it}x".replace(".0x", "x") },
@@ -211,9 +219,7 @@ fun PlayerSettings() {
         "Ajoute les sous-titres d'OpenSubtitles (langues ci-dessous) au menu du lecteur",
         s.onlineSubtitles,
     ) { v -> Store.updateSettings { it.copy(onlineSubtitles = v) } }
-    SettingsChoice("Taille des sous-titres", listOf(42 to "Petite", 55 to "Normale", 68 to "Grande", 82 to "Très grande"), s.subtitleSize) { v ->
-        Store.updateSettings { it.copy(subtitleSize = v) }
-    }
+    SubtitleStyleItem()
     SettingsText("Langues des sous-titres", s.subtitleLanguages, "fr,en") { v -> Store.updateSettings { it.copy(subtitleLanguages = v) } }
     SettingsText("Langues audio", s.audioLanguages, "fr,en") { v -> Store.updateSettings { it.copy(audioLanguages = v) } }
 

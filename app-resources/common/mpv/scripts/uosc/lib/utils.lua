@@ -98,7 +98,7 @@ function tween(from, to, setter, duration_or_callback, callback)
 	local get_to = type(to) == 'function' and to or function() return to --[[@as number]] end
 	local distance = math.abs(get_to() - current)
 	local cutoff = distance * 0.01
-	local target_ticks = (math.max(duration, 1) / (state.render_delay * 1000))
+	local target_ticks = (math.max(duration, 1) / (math.max(state.render_delay, 0.002) * 1000))
 	local decay = 1 - ((cutoff / distance) ^ (1 / target_ticks))
 
 	local function finish()

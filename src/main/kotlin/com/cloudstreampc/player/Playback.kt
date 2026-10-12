@@ -244,12 +244,47 @@ object PlaybackManager {
         relayed: Boolean = false,
     ) {
         val settings = Store.settings
+        if (settings.player == PlayerKind.MPV && PlayerSurface.enabled) {
+            ExternalPlayer.findPlayer(settings.player, settings.playerPath) ?: throw ExternalPlayer.PlayerNotFound(settings.player)
+            pending = null
+            // The video area must be on screen before mpv can draw into it.
+            scope.launch {
+                runCatching {
+                    val wid = PlayerSurface.acquire(titleOf(request.playable))
+                    start(request, link, subtitles, direct, relayed, wid)
+                }.onFailure {
+                    Logger.error("Lecteur ${link.name}", it)
+                    pending = request.copy(autoPlay = false, chooseManually = true, failedSources = request.failedSources + link.name)
+                }
+            }
+            return
+        }
+        start(request, link, subtitles, direct, relayed, null)
+    }
+
+    /** The mpv (or VLC) IPC of what plays now, for the phone remote. */
+    @Volatile var currentIpc: String? = null
+        private set
+
+    private fun start(
+        request: PlayRequest,
+        link: ExtractorLink,
+        subtitles: List<SubtitleFile>,
+        direct: ExtractorLink?,
+        relayed: Boolean,
+        wid: Long?,
+    ) {
+        val settings = Store.settings
         val ipcPath = if (settings.player == PlayerKind.MPV) MpvIpc.newServerPath() else null
         val process = ExternalPlayer.play(
             link, titleOf(request.playable), subtitles, resumePosition(request), ipcPath,
             hasNext = ipcPath != null && request.next != null,
             live = request.isLive,
+            wid = wid,
         )
+        if (wid != null) PlayerSurface.follow(process, ipcPath)
+        if (ipcPath != null) scope.launch { ExternalPlayer.applySubtitleStyle(ipcPath, process) }
+        currentIpc = ipcPath
         pending = null
         nextUp = null
         val session = Session(request, link.name)
@@ -351,6 +386,7 @@ object PlaybackManager {
             }
         }
         val exitCode = process.waitFor()
+        if (currentIpc == ipcPath) currentIpc = null
         if (liveWindow?.session === session) {
             liveWindow = null
             LiveRelay.close()
