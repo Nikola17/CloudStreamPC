@@ -337,6 +337,7 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                 Spacer(Modifier.width(6.dp))
                                 Text(if (favorite) "Favori" else "Ajouter aux favoris")
                             }
+                            StatusButton(data, saved)
                             FilledTonalButton(onClick = { showCollections = true }) { Text("Collections") }
                             TextButton(onClick = { openInBrowser(data.url) }) {
                                 Icon(AppIcons.OpenInBrowser, null)
@@ -514,6 +515,40 @@ private fun PersonCard(person: com.cloudstreampc.providers.Person) {
         person.role?.let {
             Text(it, fontSize = 12.sp, color = CsColors.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+/** CloudStream's library lists: En cours, À voir, En pause, Abandonné, Terminé. */
+@Composable
+private fun StatusButton(data: com.lagradost.cloudstream3.LoadResponse, saved: com.cloudstreampc.core.SavedItem) {
+    val nav = LocalNavigator.current
+    var open by remember { mutableStateOf(false) }
+    val current = Store.statusOf(data.apiName, data.url)
+    Box {
+        FilledTonalButton(onClick = { open = true }) {
+            Icon(AppIcons.FilterList, null)
+            Spacer(Modifier.width(6.dp))
+            Text(current?.shown ?: "Statut")
+        }
+        androidx.compose.material3.DropdownMenu(open, onDismissRequest = { open = false }) {
+            com.cloudstreampc.core.WatchStatus.entries.forEach { status ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(status.shown, fontWeight = if (status == current) FontWeight.Bold else null) },
+                    onClick = {
+                        open = false
+                        Store.setStatus(saved, status)
+                        com.cloudstreampc.sync.Trackers.statusChanged(data, status)
+                        nav.toast(I18n.tr("Ajouté à « {} »").replace("{}", status.shown))
+                    },
+                )
+            }
+            if (current != null) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Retirer de la bibliothèque") },
+                    onClick = { open = false; Store.setStatus(saved, null) },
+                )
+            }
         }
     }
 }

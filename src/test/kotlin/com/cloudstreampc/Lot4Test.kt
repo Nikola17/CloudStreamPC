@@ -6,7 +6,6 @@ import com.cloudstreampc.core.UserLibrary
 import com.cloudstreampc.core.mapper
 import com.cloudstreampc.providers.Enrichment
 import com.cloudstreampc.sync.FolderSync
-import com.cloudstreampc.ui.EnglishTexts
 import com.cloudstreampc.ui.I18n
 import com.cloudstreampc.ui.mergeResults
 import com.lagradost.cloudstream3.MainAPI
@@ -30,9 +29,17 @@ class Lot4Test {
         // Content (titles, summaries) stays as it is.
         assertEquals("Le Comte de Monte-Cristo", I18n.toEnglish("Le Comte de Monte-Cristo"))
         // Every template has as many variable parts in English as in French.
-        EnglishTexts.map.filterKeys { "{}" in it }.forEach { (fr, en) ->
-            assertEquals(fr.split("{}").size, en.split("{}").size, "Template « $fr »")
+        // Every language: same keys as English, and as many variable parts as in French.
+        val english = I18n.texts("en")
+        I18n.languages.map { it.first }.filter { it != "fr" }.forEach { code ->
+            val texts = I18n.texts(code)
+            assertEquals(english.keys, texts.keys, "Textes de $code")
+            texts.filterKeys { "{}" in it }.forEach { (fr, value) ->
+                assertEquals(fr.split("{}").size, value.split("{}").size, "$code : « $fr »")
+            }
         }
+        assertEquals("Mi lista (3)", I18n.translate("es", "Ma liste (3)"))
+        assertEquals("Weil du Dune gesehen hast", I18n.translate("de", "Parce que vous avez regardé Dune"))
     }
 
     @Test

@@ -125,11 +125,15 @@ jobs:
         run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
       - name: Packaging tools
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot rpm
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q fakeroot rpm
+          # xz for the .rpm too (rpmbuild's default compresses less).
+          echo '%_binary_payload w9.xzdio' >> ~/.rpmmacros
 
       - name: Tests and app
         run: |
-          ./gradlew --no-daemon test createReleaseDistributable
+          # The extensions' WebView is tested with the runner's Chrome.
+          ./gradlew --no-daemon test createReleaseDistributable "-Dtest.browser=$(command -v google-chrome || echo none)"
           python3 scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC linux
 
       # mpv comes from the system (apt install mpv); the torrent engine and yt-dlp download on first use.
@@ -193,7 +197,8 @@ jobs:
           mkdir -p out dist
           jpackage --type dmg --app-image build/compose/binaries/main-release/app/CloudStreamPC.app --name CloudStreamPC \
             --app-version $v --dest out --vendor CloudStreamPC
-          cp out/*.dmg "dist/CloudStreamPC-$v-macos-arm64.dmg"
+          # LZMA-compressed image (macOS 10.15+), smaller than jpackage's zlib one.
+          hdiutil convert out/*.dmg -format ULMO -o "dist/CloudStreamPC-$v-macos-arm64.dmg"
           ls -l dist
 
       - uses: actions/upload-artifact@v4

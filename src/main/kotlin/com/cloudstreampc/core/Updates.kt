@@ -94,7 +94,7 @@ object Updates {
     fun launch(installer: File) {
         val command = when {
             // Inno Setup: progress window only, closes the app, installs, then starts the new version.
-            isWindows -> listOf(installer.path, "/SILENT", "/SP-", "/NOCANCEL", "/CLOSEAPPLICATIONS", "/LANG=" + if (Store.settings.language == "en") "en" else "fr")
+            isWindows -> listOf(installer.path, "/SILENT", "/SP-", "/NOCANCEL", "/CLOSEAPPLICATIONS", "/LANG=" + if (com.cloudstreampc.ui.I18n.language == "fr") "fr" else "en")
             isMac -> listOf("open", installer.path)
             else -> listOf("xdg-open", installer.path)
         }

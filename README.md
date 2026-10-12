@@ -136,7 +136,27 @@ A pour ouvrir, B pour revenir, X pour pause, Y pour le plein écran, gâchettes 
 
 **Thèmes** : noir (AMOLED), sombre, gris, bleu nuit, bordeaux et forêt, avec la couleur principale au choix.
 
-**English** : Settings → General → App language switches the interface to English.
+**Langues** : français, anglais, espagnol, allemand, italien, portugais et arabe (interface en miroir, de droite
+à gauche) — Paramètres → Général → Langue de l'application. Les traductions sont des fichiers JSON
+(`src/main/resources/i18n/`) : pour en ajouter une, copiez `en.json`, traduisez les valeurs et ajoutez son code
+dans `I18n.languages`.
+
+**Sites protégés et extensions « WebView »** : certaines extensions ont besoin d'un vrai navigateur (pages dont
+l'adresse vidéo n'apparaît qu'après leur JavaScript, vérification Cloudflare). CloudStreamPC pilote en arrière-plan
+le navigateur Chromium déjà installé sur l'ordinateur (Edge, présent sur tout Windows 10/11, Chrome, Brave ou
+Chromium), sans rien télécharger de plus. Si un site exige une vérification humaine (captcha), une petite fenêtre
+s'ouvre une seule fois ; les cookies obtenus servent ensuite à toutes les extensions.
+
+**Bibliothèque comme CloudStream** : bouton « Statut » des fiches (En cours, À voir, En pause, Abandonné,
+Terminé), une section par statut dans la Bibliothèque, synchronisée entre PC et envoyée à AniList, MyAnimeList,
+Simkl et Trakt (Trakt : « À voir » = sa liste de suivi).
+
+**Depuis le téléphone** : Paramètres → Mises à jour et Sauvegarde → Importer depuis CloudStream (Android) lit une
+sauvegarde de l'application Android (.json) : bibliothèque et statuts, favoris, titres en cours et dépôts
+d'extensions.
+
+**En arrière-plan** : fermer la fenêtre garde CloudStreamPC dans la zone de notification (nouveaux épisodes,
+téléchargements) ; option « Lancer au démarrage de l'ordinateur », discrètement.
 
 **Suivi** (Paramètres → Comptes et Sécurité → Suivi et synchronisation) : les épisodes et films vus jusqu'au
 bout sont envoyés à **AniList** et **MyAnimeList** (animés) et à **Simkl** et **Trakt** (tout). La liste « en cours /
@@ -243,7 +263,11 @@ de signature avec un certificat jetable (sans publier de version).
   ailleurs, le bouton « +85 s » de la barre de contrôle avance d'un générique type.
 - Le relais du direct gère les flux MPEG-TS et HLS (y compris chiffrés AES-128) ; les rares chaînes en
   segments fMP4 sont lues directement par mpv, qui se reconnecte aussi tout seul mais sans source de secours.
-- L'anglais traduit l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
+- Les extensions « WebView » demandent un navigateur Chromium installé (Edge, Chrome, Brave ou Chromium) ;
+  Firefox seul ne suffit pas.
+- Les positions de lecture à l'intérieur des épisodes ne sont pas reprises d'une sauvegarde Android (le téléphone
+  les range sous des numéros internes).
+- Les traductions traduisent l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
 - Les bandes-annonces passent par YouTube : si YouTube change, une mise à jour de yt-dlp (incluse dans
   la version suivante) peut être nécessaire.
 - Sous macOS et Linux, mpv n'est pas inclus : il faut l'installer (voir Installation). Les versions macOS et

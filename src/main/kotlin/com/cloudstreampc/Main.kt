@@ -47,9 +47,11 @@ private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 /** Mouse "back" button as Java numbers it: on Linux, 4 and 5 are the horizontal scroll of touchpads. */
 private val backButton = if (System.getProperty("os.name").lowercase().contains("linux")) 6 else 4
 
-fun main() {
+fun main(args: Array<String>) {
+    val startHidden = com.cloudstreampc.core.Autostart.HIDDEN_ARG in args
     Logger.install()
     com.cloudstreampc.core.CrashReport.install()
+    Runtime.getRuntime().addShutdownHook(Thread { runCatching { com.cloudstreampc.net.ChromiumBrowser.shutdown() } })
     Network.apply(Store.settings.dns)
     com.cloudstreampc.plugins.PluginManager.configureLibrary()
 
@@ -89,17 +91,24 @@ fun main() {
             }
             onDispose { com.cloudstreampc.core.EpisodeWatcher.onNewEpisode = null }
         }
-        if (Store.settings.newEpisodeNotifications && isTraySupported) {
+        // Hidden in the notification area: started with the computer, or window closed with "keep running".
+        var windowVisible by remember { mutableStateOf(!(startHidden && isTraySupported)) }
+        fun show() {
+            windowVisible = true
+            state.isMinimized = false
+        }
+        val inTray = isTraySupported && (Store.settings.newEpisodeNotifications || Store.settings.closeToTray || !windowVisible)
+        if (inTray) {
             Tray(
                 icon = painterResource("icon.png"),
                 state = trayState,
                 tooltip = "CloudStreamPC",
                 onAction = {
-                    state.isMinimized = false
-                    nav.select(com.cloudstreampc.ui.Tab.Library)
+                    show()
+                    if (com.cloudstreampc.core.Store.library.newEpisodes.isNotEmpty()) nav.select(com.cloudstreampc.ui.Tab.Library)
                 },
                 menu = {
-                    Item(com.cloudstreampc.ui.I18n.tr("Ouvrir CloudStreamPC"), onClick = { state.isMinimized = false })
+                    Item(com.cloudstreampc.ui.I18n.tr("Ouvrir CloudStreamPC"), onClick = ::show)
                     Item(com.cloudstreampc.ui.I18n.tr("Quitter"), onClick = ::exitApplication)
                 },
             )
@@ -118,7 +127,26 @@ fun main() {
                 },
         ) {
         Window(
-            onCloseRequest = { if (Store.settings.confirmExit) confirmExit = true else exitApplication() },
+            visible = windowVisible,
+            onCloseRequest = {
+                when {
+                    Store.settings.closeToTray && isTraySupported -> {
+                        windowVisible = false
+                        if (!Store.settings.backgroundHintShown) {
+                            Store.updateSettings { it.copy(backgroundHintShown = true) }
+                            trayState.sendNotification(
+                                Notification(
+                                    "CloudStreamPC",
+                                    com.cloudstreampc.ui.I18n.tr("CloudStreamPC continue en arrière-plan. Pour quitter : clic droit sur son icône → Quitter."),
+                                    Notification.Type.Info,
+                                ),
+                            )
+                        }
+                    }
+                    Store.settings.confirmExit -> confirmExit = true
+                    else -> exitApplication()
+                }
+            },
             state = state,
             title = "CloudStream",
             icon = painterResource("icon.png"),

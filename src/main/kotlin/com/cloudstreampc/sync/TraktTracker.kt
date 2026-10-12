@@ -103,4 +103,18 @@ object TraktTracker : Tracker {
             TrackedTitle(media.path("title").asText(), null, if (type == "movie") "Film à voir" else "Série à voir", media.path("year").asInt(0).takeIf { it > 0 })
         }
     }
+
+    /** Trakt only has a watchlist: "À voir" adds to it, the other lists take the title out of it. */
+    override suspend fun setStatus(account: TrackerAccount, event: WatchEvent, status: com.cloudstreampc.core.WatchStatus): TrackerAccount? {
+        val fresh = refreshed(account)
+        val item = buildMap<String, Any> {
+            put("title", event.title)
+            event.year?.let { put("year", it) }
+            event.imdbId?.let { put("ids", mapOf("imdb" to it)) }
+        }
+        val body = if (event.isMovie) mapOf("movies" to listOf(item)) else mapOf("shows" to listOf(item))
+        val path = if (status == com.cloudstreampc.core.WatchStatus.PLAN_TO_WATCH) "sync/watchlist" else "sync/watchlist/remove"
+        Http.expect("POST", "$apiBase/$path", headers(fresh ?: account), Http.jsonBody(body))
+        return fresh
+    }
 }

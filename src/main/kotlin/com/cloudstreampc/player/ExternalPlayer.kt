@@ -155,7 +155,8 @@ object ExternalPlayer {
             "--script=${File(dir, "scripts/uosc").path}",
             "--script=${File(dir, "scripts/cloudstreampc.lua").path}",
             "--osd-fonts-dir=${File(dir, "fonts").path}",
-            "--script-opts-append=uosc-languages=" + if (settings.language == "en") "en" else "fr,en",
+            // uosc's own menus: its translations (fr, de, es…), English otherwise.
+            "--script-opts-append=uosc-languages=" + com.cloudstreampc.ui.I18n.language.let { if (it == "en") "en" else "$it,en" },
             "--script-opts-append=uosc-controls=$controls",
             "--script-opts-append=uosc-color=foreground=$accent,foreground_text=ffffff",
             "--script-opts-append=uosc-timeline_style=bar",

@@ -62,6 +62,8 @@ fun LibraryScreen() {
     var section by rememberSaveable { mutableStateOf(if (library.newEpisodes.isNotEmpty()) "new" else "list") }
     if (section == "new" && library.newEpisodes.isEmpty()) section = "list"
     if (section.startsWith("c:") && library.collections.none { "c:" + it.id == section }) section = "list"
+    val statusSection = com.cloudstreampc.core.WatchStatus.entries.firstOrNull { "s:" + it.name == section }
+    if (statusSection != null && library.statuses.values.none { it.status == statusSection }) section = "list"
     var sort by rememberSaveable { mutableStateOf(ListSort.Added) }
     var filter by rememberSaveable { mutableStateOf(TypeFilter.All) }
     var creating by remember { mutableStateOf(false) }
@@ -86,6 +88,10 @@ fun LibraryScreen() {
                 FilterChip(section == "new", { section = "new" }, { Text("Nouveaux épisodes (${library.newEpisodes.size})") })
             }
             FilterChip(section == "list", { section = "list" }, { Text("Ma liste (${library.favorites.size})") })
+            com.cloudstreampc.core.WatchStatus.entries.forEach { status ->
+                val count = library.statuses.values.count { it.status == status }
+                if (count > 0) FilterChip(section == "s:" + status.name, { section = "s:" + status.name }, { Text(status.shown + " ($count)") })
+            }
             library.collections.forEach { c ->
                 FilterChip(section == "c:" + c.id, { section = "c:" + c.id }, { Text("${c.name} (${c.items.size})") })
             }
@@ -95,7 +101,7 @@ fun LibraryScreen() {
                 FilterChip(section == "tracking", { section = "tracking" }, { Text("Listes de suivi") })
             }
         }
-        if (section == "list" || collection != null) {
+        if (section == "list" || collection != null || statusSection != null) {
             Row(Modifier.padding(start = 24.dp, top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Trier :", color = CsColors.TextMuted, fontSize = 13.sp)
                 ListSort.entries.forEach { s -> FilterChip(sort == s, { sort = s }, { Text(s.label, fontSize = 12.sp) }) }
@@ -133,6 +139,17 @@ fun LibraryScreen() {
                         badge = release.label.ifBlank { "NOUVEAU" },
                         subtitle = if (release.added > 1) "${release.added} nouveaux épisodes" else "Nouvel épisode",
                     ) { nav.open(release.item) }
+                }
+            }
+            statusSection != null -> {
+                val entries = library.statuses.values.filter { it.status == statusSection }.sortedByDescending { it.updatedAt }
+                val items = arranged(entries.map { it.item })
+                grid {
+                    items(items, key = { it.apiName + it.url }) { item ->
+                        PosterCard(item.name, item.posterUrl, subtitle = item.year?.toString() ?: item.apiName, onDismiss = { Store.setStatus(item, null) }) {
+                            nav.open(item)
+                        }
+                    }
                 }
             }
             collection != null -> {

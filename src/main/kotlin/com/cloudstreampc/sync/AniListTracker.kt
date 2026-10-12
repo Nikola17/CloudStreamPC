@@ -86,4 +86,22 @@ object AniListTracker : Tracker {
             TrackedTitle(title, media.path("coverImage").path("large").asText().ifBlank { null }, detail, media.path("seasonYear").asInt(0).takeIf { it > 0 })
         }
     }
+
+    override suspend fun setStatus(account: TrackerAccount, event: WatchEvent, status: com.cloudstreampc.core.WatchStatus): TrackerAccount? {
+        val token = account.accessToken ?: return null
+        val media = findMedia(token, event) ?: error("anime introuvable sur AniList")
+        val value = when (status) {
+            com.cloudstreampc.core.WatchStatus.WATCHING -> "CURRENT"
+            com.cloudstreampc.core.WatchStatus.PLAN_TO_WATCH -> "PLANNING"
+            com.cloudstreampc.core.WatchStatus.ON_HOLD -> "PAUSED"
+            com.cloudstreampc.core.WatchStatus.DROPPED -> "DROPPED"
+            com.cloudstreampc.core.WatchStatus.COMPLETED -> "COMPLETED"
+        }
+        graphql(
+            token,
+            "mutation(\$id: Int, \$s: MediaListStatus) { SaveMediaListEntry(mediaId: \$id, status: \$s) { id } }",
+            mapOf("id" to media.path("id").asInt(), "s" to value),
+        )
+        return null
+    }
 }

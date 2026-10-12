@@ -145,6 +145,13 @@ object FolderSync {
                 .map { (_, versions) -> versions.maxBy { it.modifiedAt } }
                 .filter { it.modifiedAt > (maxMerge(local.collectionsRemoved, remote.collectionsRemoved)[it.id] ?: -1) }
                 .sortedBy { c -> local.collections.indexOfFirst { it.id == c.id }.let { if (it < 0) Int.MAX_VALUE else it } },
+            statusRemoved = maxMerge(local.statusRemoved, remote.statusRemoved),
+            // Per title, the latest status wins over an older one and over an older removal.
+            statuses = (local.statuses.keys + remote.statuses.keys).mapNotNull { key ->
+                val entry = listOfNotNull(local.statuses[key], remote.statuses[key]).maxBy { it.updatedAt }
+                val removedAt = maxOf(local.statusRemoved[key] ?: 0, remote.statusRemoved[key] ?: 0)
+                if (entry.updatedAt > removedAt) key to entry else null
+            }.toMap(),
             modifiedAt = maxOf(local.modifiedAt, remote.modifiedAt),
         )
     }

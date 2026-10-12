@@ -108,4 +108,18 @@ object MalTracker : Tracker {
                 }
         }
     }
+
+    override suspend fun setStatus(account: TrackerAccount, event: WatchEvent, status: com.cloudstreampc.core.WatchStatus): TrackerAccount? {
+        val fresh = refreshed(account)
+        val malId = event.malId ?: error("identifiant MyAnimeList inconnu")
+        val value = when (status) {
+            com.cloudstreampc.core.WatchStatus.WATCHING -> "watching"
+            com.cloudstreampc.core.WatchStatus.PLAN_TO_WATCH -> "plan_to_watch"
+            com.cloudstreampc.core.WatchStatus.ON_HOLD -> "on_hold"
+            com.cloudstreampc.core.WatchStatus.DROPPED -> "dropped"
+            com.cloudstreampc.core.WatchStatus.COMPLETED -> "completed"
+        }
+        Http.expect("PATCH", "$apiBase/anime/$malId/my_list_status", auth(fresh ?: account), Http.formBody(mapOf("status" to value)))
+        return fresh
+    }
 }

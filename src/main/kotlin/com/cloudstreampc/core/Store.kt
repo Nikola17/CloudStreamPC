@@ -115,6 +115,13 @@ data class Settings(
     val liveBuffer: Int = 8,
     /** Live TV goes through the local relay that reconnects without cutting the picture. */
     val liveRelay: Boolean = true,
+    /** Chromium browser driven for the sites that need one (empty: found automatically). */
+    val browserPath: String = "",
+    /** Closing the window keeps the app in the notification area (notifications, downloads continue). */
+    val closeToTray: Boolean = true,
+    val backgroundHintShown: Boolean = false,
+    /** Starts with the computer, hidden in the notification area. */
+    val launchAtStartup: Boolean = false,
     /** Interface language: "fr" or "en". */
     val language: String = "fr",
 
@@ -227,10 +234,33 @@ data class UserLibrary(
     val collections: List<UserCollection> = emptyList(),
     /** Deleted collections (id -> epoch ms), so a synced PC doesn't bring them back. */
     val collectionsRemoved: Map<String, Long> = emptyMap(),
+    /** Where each title stands, like CloudStream's library ("apiName|url" -> status). */
+    val statuses: Map<String, StatusEntry> = emptyMap(),
+    /** Statuses cleared by hand (key -> epoch ms), so a synced PC doesn't bring them back. */
+    val statusRemoved: Map<String, Long> = emptyMap(),
     /** Source that played last for a title ("apiName|url" -> source name), tried first next time. */
     val preferredSources: Map<String, String> = emptyMap(),
     /** Last change of this library, for the sync folder. */
     val modifiedAt: Long = 0,
+)
+
+/** CloudStream's library lists. */
+enum class WatchStatus(val label: String, val english: String) {
+    WATCHING("En cours", "Watching"),
+    PLAN_TO_WATCH("À voir", "Plan to watch"),
+    ON_HOLD("En pause", "On hold"),
+    DROPPED("Abandonné", "Dropped"),
+    COMPLETED("Terminé", "Completed"),
+    ;
+
+    /** In the interface's language. */
+    val shown: String get() = com.cloudstreampc.ui.I18n.tr("WatchStatus.$name").takeIf { !it.startsWith("WatchStatus.") } ?: label
+}
+
+data class StatusEntry(
+    val item: SavedItem = SavedItem(),
+    val status: WatchStatus = WatchStatus.WATCHING,
+    val updatedAt: Long = 0,
 )
 
 data class UserCollection(
@@ -329,6 +359,19 @@ object Store {
             )
         } else {
             lib.copy(favorites = listOf(item) + lib.favorites, favoriteAdded = lib.favoriteAdded + (key to now))
+        }
+    }
+
+    fun statusOf(apiName: String, url: String): WatchStatus? = library.statuses["$apiName|$url"]?.status
+
+    /** Puts a title in a library list, or takes it out (null). */
+    fun setStatus(item: SavedItem, status: WatchStatus?) = updateLibrary { lib ->
+        val key = "${item.apiName}|${item.url}"
+        val now = System.currentTimeMillis()
+        if (status == null) {
+            lib.copy(statuses = lib.statuses - key, statusRemoved = lib.statusRemoved + (key to now))
+        } else {
+            lib.copy(statuses = lib.statuses + (key to StatusEntry(item, status, now)), statusRemoved = lib.statusRemoved - key)
         }
     }
 

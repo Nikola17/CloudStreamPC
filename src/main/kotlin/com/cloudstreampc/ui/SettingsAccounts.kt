@@ -73,6 +73,7 @@ fun UpdateSettings() {
     var update by remember { mutableStateOf<Updates.Release?>(null) }
     var logs by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf(false) }
+    var androidImport by remember { mutableStateOf<com.cloudstreampc.core.AndroidImport.Imported?>(null) }
 
     SettingsCategory("Mises à jour de l'application")
     SettingsItem("Vérifier les mises à jour", "Version installée : $APP_VERSION") {
@@ -99,6 +100,20 @@ fun UpdateSettings() {
     }
     SettingsChoice("Fréquence de sauvegarde", listOf(0 to "Désactivée", 1 to "Tous les jours", 7 to "Toutes les semaines"), s.backupFrequencyDays) { v ->
         Store.updateSettings { it.copy(backupFrequencyDays = v) }
+    }
+    SettingsItem("Importer depuis CloudStream (Android)", "Bibliothèque, favoris, titres en cours et dépôts d'une sauvegarde du téléphone (.json)") {
+        val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Sauvegarde CloudStream (.json)", "json") }
+        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+            scope.launch {
+                val imported = runCatching { withContext(Dispatchers.IO) { com.cloudstreampc.core.AndroidImport.read(chooser.selectedFile) } }
+                    .getOrElse { nav.toast("Échec : ${it.message}"); return@launch }
+                if (imported.isEmpty) {
+                    nav.toast("Rien à importer dans ce fichier")
+                } else {
+                    androidImport = imported
+                }
+            }
+        }
     }
     SettingsItem("Restaurer une sauvegarde", "Remplace les données actuelles") {
         val chooser = JFileChooser(Backup.folder).apply { fileFilter = FileNameExtensionFilter("Sauvegarde CloudStreamPC (.zip)", "zip") }
@@ -138,6 +153,21 @@ fun UpdateSettings() {
     update?.let { release -> UpdateDialog(release) { update = null } }
     if (logs) LogViewerDialog { logs = false }
     if (report) ReportDialog { report = false }
+    androidImport?.let { imported ->
+        AlertDialog(
+            onDismissRequest = { androidImport = null },
+            title = { Text("Importer depuis CloudStream (Android)") },
+            text = { Text(I18n.tr("À ajouter au profil actuel : {}.").replace("{}", imported.summary())) },
+            confirmButton = {
+                Button(onClick = {
+                    com.cloudstreampc.core.AndroidImport.apply(imported)
+                    androidImport = null
+                    nav.toast(if (imported.repositories.isNotEmpty()) "Importé. Installez les extensions des dépôts ajoutés dans Extensions." else "Importé")
+                }) { Text("Importer") }
+            },
+            dismissButton = { TextButton(onClick = { androidImport = null }) { Text("Annuler") } },
+        )
+    }
 }
 
 @Composable

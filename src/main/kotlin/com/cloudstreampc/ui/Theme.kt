@@ -127,6 +127,9 @@ fun CloudStreamTheme(content: @Composable () -> Unit) {
             error = CsColors.Error,
         ),
         typography = appTypography,
-        content = content,
-    )
+    ) {
+        // Arabic: the whole interface is mirrored, right to left.
+        val direction = if (I18n.rightToLeft) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides direction, content = content)
+    }
 }

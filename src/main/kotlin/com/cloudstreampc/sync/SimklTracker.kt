@@ -84,4 +84,29 @@ object SimklTracker : Tracker {
                 }
             }
         }
+
+    override suspend fun setStatus(account: TrackerAccount, event: WatchEvent, status: com.cloudstreampc.core.WatchStatus): TrackerAccount? {
+        val ids = buildMap<String, Any> {
+            event.imdbId?.let { put("imdb", it) }
+            if (event.isAnime) event.malId?.let { put("mal", it) }
+        }
+        val item = buildMap<String, Any> {
+            put("title", event.title)
+            event.year?.let { put("year", it) }
+            if (ids.isNotEmpty()) put("ids", ids)
+            put(
+                "to",
+                when (status) {
+                    com.cloudstreampc.core.WatchStatus.WATCHING -> "watching"
+                    com.cloudstreampc.core.WatchStatus.PLAN_TO_WATCH -> "plantowatch"
+                    com.cloudstreampc.core.WatchStatus.ON_HOLD -> "hold"
+                    com.cloudstreampc.core.WatchStatus.DROPPED -> "dropped"
+                    com.cloudstreampc.core.WatchStatus.COMPLETED -> "completed"
+                },
+            )
+        }
+        val body = if (event.isMovie) mapOf("movies" to listOf(item)) else mapOf("shows" to listOf(item))
+        Http.expect("POST", "$apiBase/sync/add-to-list", headers(account), Http.jsonBody(body))
+        return null
+    }
 }

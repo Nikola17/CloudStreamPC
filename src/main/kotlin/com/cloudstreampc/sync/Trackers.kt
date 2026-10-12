@@ -57,6 +57,9 @@ interface Tracker {
 
     /** Titles the user is watching (or wants to watch) on the service. */
     suspend fun list(account: TrackerAccount): List<TrackedTitle>
+
+    /** Puts the title in the service's matching list; returns the account when its tokens were refreshed. */
+    suspend fun setStatus(account: TrackerAccount, event: WatchEvent, status: com.cloudstreampc.core.WatchStatus): TrackerAccount? = null
 }
 
 /** The tracking accounts: AniList and MyAnimeList (animes), Simkl and Trakt (everything). */
@@ -96,6 +99,24 @@ object Trackers {
                 } catch (t: Throwable) {
                     Logger.error("${tracker.name} : ${event.title}", t)
                 }
+            }
+        }
+    }
+
+    /** A title was put in a library list: same list on the connected services, in the background. */
+    fun statusChanged(response: LoadResponse, status: com.cloudstreampc.core.WatchStatus) {
+        val connected = connected()
+        if (connected.isEmpty()) return
+        scope.launch {
+            val event = runCatching { eventFor(response, Playable(response.url, null, response.name)) }.getOrElse {
+                Logger.error("Suivi : ${response.name}", it)
+                return@launch
+            }
+            connected.filter { !it.animeOnly || event.isAnime }.forEach { tracker ->
+                val account = account(tracker) ?: return@forEach
+                runCatching { tracker.setStatus(account, event, status)?.let { save(tracker, it) } }
+                    .onSuccess { Logger.info("${tracker.name} : ${event.title} → ${status.label}") }
+                    .onFailure { Logger.error("${tracker.name} : ${event.title}", it) }
             }
         }
     }

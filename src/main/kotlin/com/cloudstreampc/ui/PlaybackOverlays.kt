@@ -48,7 +48,7 @@ fun PlaybackOverlays(modifier: Modifier = Modifier) {
     }
     PlaybackManager.nowPlaying?.let { NowPlayingBar(it, modifier) }
     CastBar(modifier)
-    (com.cloudstreampc.core.OnDemand.progress ?: PlaybackManager.status)?.let { message ->
+    (com.cloudstreampc.net.ChromiumBrowser.status ?: com.cloudstreampc.core.OnDemand.progress ?: PlaybackManager.status)?.let { message ->
         Row(
             modifier.padding(16.dp).clip(RoundedCornerShape(12.dp)).background(CsColors.SurfaceHigh)
                 .padding(horizontal = 16.dp, vertical = 12.dp),

@@ -359,6 +359,15 @@ fun LayoutSettings() {
         nav.toast("Recommandations réinitialisées")
     }
     SettingsSwitch("Historique de recherche", null, s.searchHistoryEnabled) { v -> Store.updateSettings { it.copy(searchHistoryEnabled = v) } }
+    SettingsSwitch("Continuer en arrière-plan", "Fermer la fenêtre garde l'application dans la zone de notification : notifications et téléchargements continuent", s.closeToTray) { v ->
+        Store.updateSettings { it.copy(closeToTray = v) }
+    }
+    if (com.cloudstreampc.core.Autostart.supported) {
+        SettingsSwitch("Lancer au démarrage de l'ordinateur", "Discrètement, dans la zone de notification", s.launchAtStartup) { v ->
+            Store.updateSettings { it.copy(launchAtStartup = v) }
+            com.cloudstreampc.core.Autostart.apply(v)
+        }
+    }
     SettingsSwitch("Confirmer avant de quitter", null, s.confirmExit) { v -> Store.updateSettings { it.copy(confirmExit = v) } }
 }
 
