@@ -58,7 +58,8 @@ val defaultRepository = RepositoryEntry(
 fun StartupGate(nav: Navigator) {
     var unlocked by remember { mutableStateOf(Store.settings.appPin == null) }
     var profileChosen by remember { mutableStateOf(!Store.settings.askProfileAtStartup || Store.settings.profiles.size < 2) }
-    CloudStreamTheme {
+    // The first-launch setup and the update notice sit outside App(): they need the navigator too.
+    CloudStreamTheme { androidx.compose.runtime.CompositionLocalProvider(LocalNavigator provides nav) {
         when {
             !unlocked -> Box(Modifier.fillMaxSize().background(CsColors.Background)) {
                 PinCheckDialog(Store.settings.appPin!!, "CloudStreamPC est verrouillé", onDismiss = null) { unlocked = true }
@@ -70,7 +71,7 @@ fun StartupGate(nav: Navigator) {
                 UpdateNotice()
             }
         }
-    }
+    } }
 }
 
 @Composable

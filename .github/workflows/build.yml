@@ -85,14 +85,13 @@ jobs:
           ./gradlew --no-daemon createReleaseDistributable
           python scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC windows
 
-      # The packaged app goes through its screens, captures each one and plays a test picture in
+      # A first launch (empty data folder, welcome dialog): the packaged app goes through its screens, captures each one and plays a test picture in
       # its window (see SmokeTest.kt): a crash or a missing part of the runtime fails the build.
       - name: Interface test
         shell: pwsh
         run: |
           $data = "$env:RUNNER_TEMP\smoke-home"
           New-Item -ItemType Directory -Force $data | Out-Null
-          '{"firstLaunchDone": true}' | Set-Content "$data\settings.json"
           $env:JAVA_TOOL_OPTIONS = "-Dcloudstreampc.home=$data"
           $p = Start-Process -FilePath build/compose/binaries/main-release/app/CloudStreamPC/CloudStreamPC.exe -ArgumentList "--smoke-test=$PWD\smoke" -PassThru
           if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Host "Test d'interface bloqué" }
@@ -179,7 +178,7 @@ jobs:
       - name: Interface test
         run: |
           data="$RUNNER_TEMP/smoke-home"
-          mkdir -p "$data" && echo '{"firstLaunchDone": true}' > "$data/settings.json"
+          mkdir -p "$data"
           JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" xvfb-run -a -s "-screen 0 1600x1000x24" \
             timeout 300 build/compose/binaries/main-release/app/CloudStreamPC/bin/CloudStreamPC --smoke-test=$PWD/smoke || true
           if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
@@ -286,7 +285,7 @@ jobs:
       - name: Interface test
         run: |
           data="$RUNNER_TEMP/smoke-home"
-          mkdir -p "$data" && echo '{"firstLaunchDone": true}' > "$data/settings.json"
+          mkdir -p "$data"
           JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" perl -e 'alarm 300; exec @ARGV' \
             build/compose/binaries/main-release/app/CloudStreamPC.app/Contents/MacOS/CloudStreamPC --smoke-test=$PWD/smoke || true
           if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
