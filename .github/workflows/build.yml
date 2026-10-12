@@ -70,8 +70,9 @@ jobs:
           New-Item -ItemType Directory -Force app-resources/windows/mpv | Out-Null
           7z x mpv.7z -oapp-resources/windows/mpv -y | Out-Null
           if (-not (Test-Path app-resources/windows/mpv/mpv.exe)) { throw "mpv.exe absent de l'archive" }
-          # Only the player itself: no documentation, installer scripts or console wrapper.
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue app-resources/windows/mpv/doc, app-resources/windows/mpv/installer, app-resources/windows/mpv/mpv.com
+          # Only the player itself: no documentation, installer scripts or console wrapper. d3dcompiler_43 is the
+          # Windows 7 fallback: Windows 10 and 11 (the only ones Java 21 runs on) have d3dcompiler_47 built in.
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue app-resources/windows/mpv/doc, app-resources/windows/mpv/installer, app-resources/windows/mpv/mpv.com, app-resources/windows/mpv/d3dcompiler_43.dll
           Get-ChildItem app-resources/windows/mpv | Format-Table Name, Length
 
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
