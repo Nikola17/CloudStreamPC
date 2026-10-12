@@ -175,7 +175,7 @@ object PlaybackManager {
 
     /** What the player opens for a live link: the relay's address, or the link itself. */
     private suspend fun liveTarget(request: PlayRequest, link: ExtractorLink): Pair<ExtractorLink, Boolean> {
-        if (!LiveTv.relayed(request)) return link to false
+        if (!LiveTv.relayed(request, link)) return link to false
         val url = LiveRelay.open(LiveTv.sources(request, link))
         return com.lagradost.cloudstream3.utils.newExtractorLink(link.source, link.name, url, com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO) {
             quality = link.quality

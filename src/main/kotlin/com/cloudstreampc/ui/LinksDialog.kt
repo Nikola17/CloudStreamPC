@@ -143,7 +143,9 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
                     }
                     sorted.isEmpty() -> Column {
                         Text(
-                            error?.let { "Erreur : $it" } ?: "Aucune source trouvée. Le site a peut-être changé ou la vidéo a été retirée.",
+                            error?.let { "Erreur : $it" } ?: if (request.isLive) {
+                                "Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là."
+                            } else "Aucune source trouvée. Le site a peut-être changé ou la vidéo a été retirée.",
                             color = CsColors.TextMuted,
                         )
                         // Like Stremio: look for the same title in the other providers.

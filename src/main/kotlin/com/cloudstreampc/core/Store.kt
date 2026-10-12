@@ -112,8 +112,11 @@ data class Settings(
     val subtitleBold: Boolean = false,
     /** Seconds, positive shows them later. */
     val subtitleDelay: Double = 0.0,
-    /** The video plays inside the app's window (Windows, Linux) instead of a window of its own. */
-    val embeddedPlayer: Boolean = true,
+    /**
+     * The video plays inside the app's window (Windows, Linux) instead of a window of its own.
+     * Experimental, off by default (the v3.0 setting `embeddedPlayer`, on for everyone, is no longer read).
+     */
+    val playerInWindow: Boolean = false,
     /** Phone remote: a page on the local network that drives the player. */
     val remoteControl: Boolean = false,
     /** Modern controls (uosc) and the "Passer l'intro" / "Épisode suivant" buttons in the bundled mpv. */
@@ -175,8 +178,13 @@ data class Settings(
     val heroTrailers: Boolean = true,
 
     // Général
-    /** DNS over HTTPS provider id (see `Network`), "none" uses the system DNS. */
+    /** Before v3.0.3: DNS over HTTPS provider id, "none" for the system DNS (still read when one was chosen). */
     val dns: String = "none",
+    /**
+     * DNS over HTTPS provider id (see `Network`): "auto" asks Cloudflare and falls back to the system DNS
+     * (gets around ISP blocking without breaking anything), "none" uses only the system DNS.
+     */
+    val dnsServer: String? = null,
     val downloadDir: String? = null,
     val parallelDownloads: Int = 2,
     /** KB/s shared by all downloads; 0: no limit. */

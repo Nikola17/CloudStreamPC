@@ -105,7 +105,7 @@ bouton « +85 s ». Par-dessus, les boutons de CloudStreamPC :
   connu, sinon à la fin de l'épisode). L'épisode suivant se charge **dans la même fenêtre**, sans quitter le
   plein écran, avec sa meilleure source. Touche `N` ou bouton de la barre de contrôle à tout moment.
 
-**Vidéo dans la fenêtre** (Windows et Linux) : la vidéo s'affiche dans la fenêtre de l'application, avec une
+**Vidéo dans la fenêtre** (Windows et Linux, expérimental, désactivé par défaut depuis la 3.0.3 : Paramètres → Lecteur) : la vidéo s'affiche dans la fenêtre de l'application, avec une
 barre en haut (retour, image dans l'image, plein écran) ; l'interface du lecteur, les boutons et le relais du
 direct restent les mêmes. Le plein écran (touche `F`, double-clic ou bouton) agrandit la fenêtre de l'application ;
 `Échap` en sort. **Image dans l'image** (bouton ou `Ctrl+P`) : la fenêtre devient un petit lecteur toujours
@@ -259,7 +259,7 @@ chaînes TV (guide des programmes), films et séries, rangés par catégorie, et
 Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisseurs.
 
 **Paramètres** (mêmes rubriques que l'application Android) :
-- *Général* : langue (français, anglais), dossier et nombre de téléchargements, manette, Discord, nouveaux épisodes et notifications, **DNS over HTTPS**
+- *Général* : langue (français, anglais), dossier et nombre de téléchargements, manette, Discord, nouveaux épisodes et notifications, **DNS over HTTPS** (« Automatique » par défaut : Cloudflare, sinon le DNS du système, pour passer les blocages des FAI)
   (Cloudflare, Google, AdGuard, Quad9…) contre les blocages des fournisseurs d'accès, liens.
 - *Lecteur* : qualité préférée, lecteur (mpv inclus, VLC, autre), lecture directe, épisode suivant,
   progression, plein écran, vitesse, interface du lecteur, « Passer l'intro » (manuel ou automatique),
@@ -324,7 +324,7 @@ de signature avec un certificat jetable (sans publier de version).
   utilisateur crée une fois sur le service (CloudStreamPC n'a pas de compte développeur commun).
 - Les extensions qui utilisent des fonctions propres à Android (réglages internes, ressources) peuvent
   ne pas fonctionner entièrement.
-- Le DNS over HTTPS s'applique aux extensions, pas au lecteur mpv.
+- Le DNS over HTTPS s'applique aux extensions et au direct (relais), pas aux films lus directement par mpv.
 - Le guide TV dépend du guide XMLTV fourni par le compte IPTV ; les chaînes des extensions n'en ont pas.
 - « Passer l'intro » n'est automatique que pour les animés présents dans AniSkip et les vidéos à chapitres ;
   ailleurs, le bouton « +85 s » de la barre de contrôle avance d'un générique type.

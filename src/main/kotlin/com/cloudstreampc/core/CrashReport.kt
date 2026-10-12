@@ -76,6 +76,32 @@ object CrashReport {
         return url(text)
     }
 
+    /**
+     * Crashes of Java itself (the app closed without a word): the JVM leaves an `hs_err_pid*.log` next to
+     * the app (see `-XX:ErrorFile` in build.gradle.kts) or in the temporary folder. At the next start its
+     * summary goes into the log (so into "Signaler un problème") and the file into the logs folder.
+     */
+    fun collectJvmCrashes() {
+        runCatching {
+            val places = listOfNotNull(
+                System.getProperty("jpackage.app-path")?.let { File(it).parentFile },
+                File(System.getProperty("user.dir")),
+                File(System.getProperty("java.io.tmpdir")),
+            ).distinct()
+            val weekAgo = System.currentTimeMillis() - 7 * 86_400_000L
+            places.flatMap { dir -> dir.listFiles { f -> f.name.startsWith("hs_err_pid") && f.name.endsWith(".log") }.orEmpty().toList() }
+                .filter { it.lastModified() > weekAgo }
+                .forEach { file ->
+                    val summary = file.readLines().filter { it.isNotBlank() }.take(30).joinToString("\n")
+                    Logger.error("Plantage de Java lors d'une session précédente (${file.name}) :\n$summary", null)
+                    val kept = File(AppDirs.logs, "crash-java-${file.name.removePrefix("hs_err_")}")
+                    if (!runCatching { file.renameTo(kept) }.getOrDefault(false)) {
+                        runCatching { file.copyTo(kept, overwrite = true); file.delete() }
+                    }
+                }
+        }
+    }
+
     /** Errors no code catches: logged, and the app keeps going when it can. */
     fun install() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()

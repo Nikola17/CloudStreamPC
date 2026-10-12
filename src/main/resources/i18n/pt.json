@@ -659,5 +659,9 @@
 "En panne": "Avariada",
 "répond": "responde",
 "Heures creuses : reprise à {} h": "Horas de vazio: retoma às {} h",
-"{} h": "{} h"
+"{} h": "{} h",
+"Vidéo dans la fenêtre de l'application (expérimental)": "Vídeo na janela da aplicação (experimental)",
+"Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P": "Desativado: o mpv abre na sua própria janela, o mais fiável. Imagem em imagem: botão acima do vídeo ou Ctrl+P",
+"Automatique (Cloudflare, sinon DNS du système)": "Automático (Cloudflare, senão o DNS do sistema)",
+"Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là.": "Nenhum link por agora. Num evento desportivo, os links costumam aparecer só no início do jogo: tente novamente nessa altura."
 }

@@ -659,5 +659,9 @@
 "En panne": "Broken",
 "répond": "responds",
 "Heures creuses : reprise à {} h": "Off-peak: resumes at {}:00",
-"{} h": "{}:00"
+"{} h": "{}:00",
+"Vidéo dans la fenêtre de l'application (expérimental)": "Video inside the app's window (experimental)",
+"Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P": "Off: mpv opens in its own window, the most reliable. Picture in picture: button above the video or Ctrl+P",
+"Automatique (Cloudflare, sinon DNS du système)": "Automatic (Cloudflare, otherwise the system DNS)",
+"Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là.": "No link for now. For a sports event, links usually only appear when the match starts: try again then."
 }

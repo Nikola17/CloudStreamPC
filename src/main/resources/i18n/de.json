@@ -659,5 +659,9 @@
 "En panne": "Defekt",
 "répond": "antwortet",
 "Heures creuses : reprise à {} h": "Nebenzeit: weiter um {} Uhr",
-"{} h": "{} Uhr"
+"{} h": "{} Uhr",
+"Vidéo dans la fenêtre de l'application (expérimental)": "Video im App-Fenster (experimentell)",
+"Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P": "Aus: mpv öffnet sich in einem eigenen Fenster, am zuverlässigsten. Bild-in-Bild: Schaltfläche über dem Video oder Strg+P",
+"Automatique (Cloudflare, sinon DNS du système)": "Automatisch (Cloudflare, sonst System-DNS)",
+"Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là.": "Noch kein Link. Bei Sportereignissen erscheinen die Links meist erst zum Spielbeginn: dann erneut versuchen."
 }

@@ -52,8 +52,9 @@ fun main(args: Array<String>) {
     val smokeDir = args.firstOrNull { it.startsWith("--smoke-test=") }?.substringAfter("=")?.let { java.io.File(it) }
     Logger.install()
     com.cloudstreampc.core.CrashReport.install()
+    com.cloudstreampc.core.CrashReport.collectJvmCrashes()
     Runtime.getRuntime().addShutdownHook(Thread { runCatching { com.cloudstreampc.net.ChromiumBrowser.shutdown() } })
-    Network.apply(Store.settings.dns)
+    Network.apply(Network.chosen())
     com.cloudstreampc.plugins.PluginManager.configureLibrary()
 
     if (!Store.settings.firstLaunchDone && Store.settings.repositories.isEmpty()) {

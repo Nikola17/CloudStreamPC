@@ -23,10 +23,10 @@ jobs:
           - arch: x64
             runner: windows-latest
             mpv: x86_64
-          # Windows on ARM (Snapdragon PCs…): best effort, the release goes out without it if it fails.
-          - arch: arm64
-            runner: windows-11-arm
-            mpv: aarch64
+          # For now only Windows x64 is built. Windows on ARM (Snapdragon PCs…), best effort, comes back with:
+          # - arch: arm64
+          #   runner: windows-11-arm
+          #   mpv: aarch64
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.arch == 'arm64' }}
     env:
@@ -93,8 +93,12 @@ jobs:
           $data = "$env:RUNNER_TEMP\smoke-home"
           New-Item -ItemType Directory -Force $data | Out-Null
           $env:JAVA_TOOL_OPTIONS = "-Dcloudstreampc.home=$data"
+          # Also real playback (film and live, in mpv's window then in the app's window, closed each time).
+          $env:SMOKE_PLAYBACK = "1"
           $p = Start-Process -FilePath build/compose/binaries/main-release/app/CloudStreamPC/CloudStreamPC.exe -ArgumentList "--smoke-test=$PWD\smoke" -PassThru
-          if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Host "Test d'interface bloqué" }
+          if (-not $p.WaitForExit(600000)) { $p.Kill(); Write-Host "Test d'interface bloqué" }
+          if (Test-Path smoke/smoke-failed.txt) { Get-Content smoke/smoke-failed.txt }
+          Get-ChildItem -Recurse -Filter "hs_err*" build/compose/binaries -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -TotalCount 40 }
           if (-not (Test-Path smoke/smoke-ok.txt)) {
             Get-ChildItem "$data\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 60 }
             throw "Test d'interface échoué"
@@ -146,6 +150,8 @@ jobs:
           path: dist/*
 
   linux:
+    # For now only Windows x64 is built: remove this line to build Linux again.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -221,6 +227,8 @@ jobs:
           path: dist/*
 
   macos:
+    # For now only Windows x64 is built: remove this line to build macOS again.
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -342,7 +350,7 @@ jobs:
       - name: Required files
         run: |
           v="${{ steps.version.outputs.version }}"
-          for f in setup.exe portable.zip amd64.deb x86_64.rpm linux-x64.tar.xz macos-arm64.dmg; do
+          for f in setup.exe portable.zip; do
             [ -f "dist/CloudStreamPC-$v-$f" ] || { echo "Fichier manquant : CloudStreamPC-$v-$f"; exit 1; }
           done
           ls -l dist
@@ -379,14 +387,7 @@ jobs:
             Version sans installation : `CloudStreamPC-${{ steps.version.outputs.version }}-portable.zip` (décompressez puis lancez `CloudStreamPC.exe`).
             Si Windows affiche « Windows a protégé votre ordinateur » : « Informations complémentaires » puis « Exécuter quand même ».
 
-            **Linux :** `.deb` (Ubuntu, Debian, Mint…), `.rpm` (Fedora, openSUSE…) ou `linux-x64.tar.xz`. Installez aussi mpv (`sudo apt install mpv`).
-
-            Windows sur ARM (Snapdragon…) : `-arm64-setup.exe` quand il est présent.
-
-            **Linux :** aussi en `.AppImage` (un seul fichier : `chmod +x` puis lancez-le).
-
-            **macOS :** `macos-arm64.dmg` (Apple Silicon) ou `macos-x64.dmg` (Intel) ; ouvrez le `.dmg` et glissez CloudStreamPC dans Applications. Installez mpv (`brew install mpv`).
-            L'application n'étant pas notariée, au premier lancement : clic droit sur l'application → Ouvrir.
+            Cette version est publiée pour Windows (x64) seulement. Linux, macOS et Windows ARM : dernière version 3.0.2.
 
             Les versions suivantes s'installent depuis l'application (Paramètres → Mises à jour et Sauvegarde).
             Le moteur torrent et le lecteur de bandes-annonces se téléchargent la première fois qu'on s'en sert.

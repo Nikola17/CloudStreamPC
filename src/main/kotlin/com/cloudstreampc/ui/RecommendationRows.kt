@@ -19,19 +19,35 @@ import com.cloudstreampc.core.Recommender
 import com.cloudstreampc.core.Store
 import com.cloudstreampc.core.Taste
 import com.cloudstreampc.plugins.PluginManager
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.TvType
 
-/** "Recommandé pour vous" and "Parce que vous avez regardé…" rows, computed locally. */
+/** Kinds of content recommendations are made of: not live TV or sports events. */
+private val recommendable = setOf(
+    TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AnimeMovie, TvType.OVA, TvType.Cartoon,
+    TvType.Documentary, TvType.AsianDrama, TvType.Torrent,
+)
+
+/**
+ * "Recommandé pour vous" and "Parce que vous avez regardé…" rows, computed locally, on the home of
+ * [provider] only when it offers movies, series or anime, and made of titles of the kinds it offers
+ * (nothing on a live TV extension).
+ */
 @Composable
-fun RecommendationRows() {
+fun RecommendationRows(provider: MainAPI) {
     if (!Store.settings.recommendationsEnabled) return
+    val kinds = provider.supportedTypes.filter { it in recommendable }.map { it.name }.toSet()
+    if (kinds.isEmpty()) return
     val taste = Taste.current()
     val library = Store.library
     val loaded = PluginManager.providers.map { it.name }.toSet()
-    val (forYou, because) = remember(taste, library, loaded) {
+    val (forYou, because) = remember(taste, library, loaded, kinds) {
+        fun fits(item: RecItem) = item.apiName in loaded && (item.type?.let { it in kinds } ?: (item.apiName == provider.name))
         val excluded = Recommender.excludedKeys(library)
-        val recs = Recommender.recommend(taste, excluded).filter { it.item.apiName in loaded }
+        val recs = Recommender.recommend(taste, excluded).filter { fits(it.item) }
         val rows = Recommender.becauseRows(taste, excluded)
-            .map { it.copy(items = it.items.filter { item -> item.apiName in loaded }) }
+            .filter { row -> row.seed.type?.let { it in kinds } ?: true }
+            .map { it.copy(items = it.items.filter(::fits)) }
             .filter { it.items.size >= 5 }
         recs to rows
     }

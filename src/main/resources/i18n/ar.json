@@ -659,5 +659,9 @@
 "En panne": "معطّلة",
 "répond": "تستجيب",
 "Heures creuses : reprise à {} h": "خارج الذروة: يُستأنف الساعة {}",
-"{} h": "{}:00"
+"{} h": "{}:00",
+"Vidéo dans la fenêtre de l'application (expérimental)": "الفيديو داخل نافذة التطبيق (تجريبي)",
+"Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P": "معطّل: يفتح mpv في نافذته الخاصة، وهو الأكثر موثوقية. صورة داخل صورة: الزر أعلى الفيديو أو Ctrl+P",
+"Automatique (Cloudflare, sinon DNS du système)": "تلقائي (Cloudflare، وإلا DNS النظام)",
+"Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là.": "لا يوجد رابط حاليًا. في الأحداث الرياضية تظهر الروابط عادةً عند بداية المباراة: أعد المحاولة حينها."
 }

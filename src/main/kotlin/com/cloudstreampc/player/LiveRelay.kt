@@ -121,9 +121,15 @@ object LiveRelay {
         }, 200, 200, TimeUnit.MILLISECONDS)
     }
 
-    private val baseClient: OkHttpClient by lazy {
-        app.baseClient.newBuilder().connectTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(true).cache(null).build()
-    }
+    /** Built from the extensions' client, so the DNS chosen in the settings (DNS over HTTPS) applies. */
+    private var clientFor: Pair<OkHttpClient, OkHttpClient>? = null
+    private val baseClient: OkHttpClient
+        @Synchronized get() {
+            val shared = app.baseClient
+            clientFor?.takeIf { it.first === shared }?.let { return it.second }
+            return shared.newBuilder().connectTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(true).cache(null).build()
+                .also { clientFor = shared to it }
+        }
 
     @Synchronized
     private fun ensureStarted(): Int {

@@ -14,13 +14,22 @@ import java.util.concurrent.CopyOnWriteArrayList
 object LinkResolver {
     class Resolved(val links: List<ExtractorLink>, val subtitles: List<SubtitleFile>, val error: Throwable?)
 
+    /** Sources found for the last item asked (live TV: the others are the relay's backups). */
+    private val found = java.util.concurrent.ConcurrentHashMap<String, CopyOnWriteArrayList<ExtractorLink>>()
+
+    fun found(data: String): List<ExtractorLink> = found[data].orEmpty()
+
     /** Streams sources and subtitles as the extractors find them, without duplicates. */
     suspend fun load(
         request: PlayRequest,
         onSubtitle: (SubtitleFile) -> Unit,
-        onLink: (ExtractorLink) -> Unit,
+        onFound: (ExtractorLink) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val data = request.playable.data
+        val bucket = CopyOnWriteArrayList<ExtractorLink>()
+        found.keys.removeIf { it != data }
+        found[data] = bucket
+        val onLink: (ExtractorLink) -> Unit = { link -> bucket += link; onFound(link) }
         if (data.startsWith(PlayQueue.TORRENT_DATA)) {
             val torrent = data.removePrefix(PlayQueue.TORRENT_DATA)
             val type = if (torrent.startsWith("magnet:")) com.lagradost.cloudstream3.utils.ExtractorLinkType.MAGNET else com.lagradost.cloudstream3.utils.ExtractorLinkType.TORRENT

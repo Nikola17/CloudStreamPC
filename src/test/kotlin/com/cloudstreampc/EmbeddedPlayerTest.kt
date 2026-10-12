@@ -24,7 +24,7 @@ class EmbeddedPlayerTest {
         if (GraphicsEnvironment.isHeadless() || (linux && System.getenv("DISPLAY").isNullOrBlank()) || !PlayerSurface.supported) return
         val mpv = (listOfNotNull(System.getProperty("test.mpv")) + listOf("/usr/bin/mpv", "/usr/local/bin/mpv"))
             .map(::File).firstOrNull { it.isFile } ?: return
-        Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, embeddedPlayer = true, playerInterface = false, subtitleBackground = 60) }
+        Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, playerInWindow = true, playerInterface = false, subtitleBackground = 60) }
 
         lateinit var window: ComposeWindow
         SwingUtilities.invokeAndWait {

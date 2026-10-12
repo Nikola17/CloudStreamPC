@@ -33,7 +33,7 @@ object PlayerSurface {
     /** macOS doesn't let another process draw inside a window: mpv keeps its own window there. */
     val supported = "win" in os || "linux" in os || "nux" in os
 
-    val enabled get() = supported && Store.settings.embeddedPlayer && Store.settings.player == PlayerKind.MPV
+    val enabled get() = supported && Store.settings.playerInWindow && Store.settings.player == PlayerKind.MPV
 
     var active by mutableStateOf(false)
         private set
@@ -63,16 +63,18 @@ object PlayerSurface {
     suspend fun acquire(title: String): Long? {
         if (!enabled) return null
         stopCurrent()
-        this.title = title
-        handle?.takeIf { active }?.let { return it }
+        handle?.takeIf { active }?.let { ui { this.title = title }; return it }
         val deferred = CompletableDeferred<Long>()
         waiting = deferred
-        active = true
-        window?.let { if (it.isMinimized) it.isMinimized = false }
+        ui {
+            this.title = title
+            active = true
+            window?.let { if (it.isMinimized) it.isMinimized = false }
+        }
         val id = withTimeoutOrNull(5_000) { deferred.await() }
         if (id == null) {
             Logger.info("Zone vidéo indisponible : mpv s'ouvre dans sa propre fenêtre")
-            close()
+            ui { close() }
         }
         return id
     }
@@ -97,14 +99,14 @@ object PlayerSurface {
             MpvIpc.watch(
                 ipcPath, process, listOf("fullscreen"),
                 onEvent = { name, args ->
-                    if (name == "client-message" && args.firstOrNull() == "cspc-pip") switchPip(pip = !pip)
+                    if (name == "client-message" && args.firstOrNull() == "cspc-pip") ui { switchPip(pip = !pip) }
                     // mpv is quitting: if a script holds it up, it is closed anyway after a moment.
                     if (name == "shutdown") scope.launch {
                         if (!process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) process.destroy()
                     }
                 },
             ) { name, value ->
-                if (name == "fullscreen" && process === this@PlayerSurface.process) switchFullscreen(value.asBoolean())
+                if (name == "fullscreen" && process === this@PlayerSurface.process) ui { switchFullscreen(value.asBoolean()) }
             }
         }
         scope.launch {
@@ -112,14 +114,22 @@ object PlayerSurface {
             if (this@PlayerSurface.process === process) {
                 this@PlayerSurface.process = null
                 this@PlayerSurface.ipcPath = null
-                close()
+                ui { close() }
             }
         }
     }
 
-    /** "Retour" above the video: stops it. */
+    /** "Retour" above the video: stops it and gives the app back (the video area goes away even if mpv is slow to quit). */
     fun stop() {
-        scope.launch { stopCurrent() }
+        scope.launch {
+            stopCurrent()
+            ui { if (process == null) close() }
+        }
+    }
+
+    /** Window and Compose state are only changed on the interface thread. */
+    private fun ui(block: () -> Unit) {
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) block() else javax.swing.SwingUtilities.invokeLater(block)
     }
 
     private fun stopCurrent() {

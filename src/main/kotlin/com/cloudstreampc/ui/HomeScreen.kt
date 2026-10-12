@@ -190,7 +190,7 @@ fun HomeScreen() {
             }
             ordered.isEmpty() && HomeState.error != null -> Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 32.dp)) {
                 ContinueWatchingRow(continueWatching)
-                RecommendationRows()
+                RecommendationRows(selected)
                 MessageBox("Impossible de charger ${selected.name}", HomeState.error, Modifier.fillMaxWidth().height(260.dp)) {
                     FilledTonalButton(onClick = { scope.launch { HomeState.load(selected) } }) { Text("Réessayer") }
                 }
@@ -218,7 +218,7 @@ fun HomeScreen() {
                 if (tab == HomeTab.All) {
                     item(key = "new-episodes") { NewEpisodesRow() }
                     item(key = "continue") { ContinueWatchingRow(continueWatching) }
-                    item(key = "recommendations") { RecommendationRows() }
+                    item(key = "recommendations") { RecommendationRows(selected) }
                 }
                 val topSection = visible.firstOrNull { !it.second.isHorizontalImages && it.second.list.size >= 5 }
                 if (topSection != null) {

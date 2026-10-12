@@ -8,10 +8,18 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 
 /** Live TV around the player: backup sources, next / previous channel, the channel list. */
 object LiveTv {
-    /** Live channels of IPTV accounts go through [LiveRelay] (when enabled and played in mpv). */
-    fun relayed(request: PlayRequest) =
+    /**
+     * Live streams go through [LiveRelay] when it is enabled and mpv plays: IPTV channels, and the HLS
+     * or TS streams of extensions (sports events…), which then also get the relay's reconnections and
+     * the DNS chosen in the settings.
+     */
+    fun relayed(request: PlayRequest, link: ExtractorLink) =
         request.isLive && Store.settings.liveRelay && Store.settings.player == com.cloudstreampc.core.PlayerKind.MPV &&
-            request.api is IptvProvider
+            (request.api is IptvProvider || relayable(link))
+
+    private fun relayable(link: ExtractorLink) =
+        link.url.startsWith("http", ignoreCase = true) &&
+            (link.type == com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 || link.type == com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO)
 
     private fun ExtractorLink.toSource() = LiveSource(url, getAllHeaders(), name)
 
@@ -20,7 +28,10 @@ object LiveTv {
      * other formats, then the same channel on the user's other IPTV accounts.
      */
     suspend fun sources(request: PlayRequest, chosen: ExtractorLink): List<LiveSource> {
-        val provider = request.api as? IptvProvider ?: return listOf(chosen.toSource())
+        // Extensions: the other sources found for the stream are the backups.
+        val provider = request.api as? IptvProvider ?: return (listOf(chosen) + LinkResolver.found(request.playable.data).filter { relayable(it) && it.name !in request.failedSources })
+            .distinctBy { it.url }.map { it.toSource() }
+            .also { list -> Logger.info("Direct : ${list.size} source(s) : ${list.joinToString { it.label }}") }
         val sameAccount = runCatching { provider.liveLinks(request) }.getOrDefault(emptyList())
         val others = runCatching { otherAccounts(provider, request.response.url) }.getOrDefault(emptyList())
         return (listOf(chosen) + sameAccount + others).distinctBy { it.url }.map { it.toSource() }

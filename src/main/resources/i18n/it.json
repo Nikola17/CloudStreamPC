@@ -659,5 +659,9 @@
 "En panne": "Non funziona",
 "répond": "risponde",
 "Heures creuses : reprise à {} h": "Fascia: riprende alle {}",
-"{} h": "{}:00"
+"{} h": "{}:00",
+"Vidéo dans la fenêtre de l'application (expérimental)": "Video nella finestra dell'app (sperimentale)",
+"Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P": "Disattivato: mpv si apre nella sua finestra, la soluzione più affidabile. Picture in picture: pulsante sopra il video o Ctrl+P",
+"Automatique (Cloudflare, sinon DNS du système)": "Automatico (Cloudflare, altrimenti DNS di sistema)",
+"Aucun lien pour le moment. Pour un événement sportif, les liens n'apparaissent en général qu'au début du match : réessayez à ce moment-là.": "Nessun link per ora. Per un evento sportivo i link compaiono di solito all'inizio della partita: riprova in quel momento."
 }

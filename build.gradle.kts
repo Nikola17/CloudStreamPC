@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "3.0.2"
+version = "3.0.3"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -57,7 +57,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     systemProperty("cloudstreampc.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
-    listOf("test.network", "test.search", "test.repo", "test.tasteOut", "test.trailerVideo", "test.mpv", "test.browser", "test.soak", "test.soak.sources", "test.soak.channels").forEach { key ->
+    listOf("test.network", "test.search", "test.repo", "test.tasteOut", "test.trailerVideo", "test.mpv", "test.browser", "test.soak", "test.soak.sources", "test.soak.channels", "test.fstv").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
     testLogging {
@@ -76,7 +76,8 @@ compose.desktop {
             optimize.set(false)
             joinOutputJars.set(false)
         }
-        jvmArgs += listOf("-Xmx1g", "--enable-native-access=ALL-UNNAMED", "-Dfile.encoding=UTF-8")
+        // A crash of Java itself leaves its report next to the app (picked up at the next start, see CrashReport).
+        jvmArgs += listOf("-Xmx1g", "--enable-native-access=ALL-UNNAMED", "-Dfile.encoding=UTF-8", "-XX:ErrorFile=\$APPDIR/../hs_err_pid%p.log")
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg)

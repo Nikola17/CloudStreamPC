@@ -128,8 +128,8 @@ fun GeneralSettings() {
     }
 
     SettingsCategory("Contournement FAI")
-    SettingsChoice("DNS over HTTPS", Network.providers.map { it.id to it.label }, s.dns) { v ->
-        Store.updateSettings { it.copy(dns = v) }
+    SettingsChoice("DNS over HTTPS", Network.providers.map { it.id to it.label }, Network.chosen()) { v ->
+        Store.updateSettings { it.copy(dnsServer = v) }
         Network.apply(v)
     }
 
@@ -180,10 +180,10 @@ fun PlayerSettings() {
     SettingsSwitch("Plein écran", null, s.fullscreen) { v -> Store.updateSettings { it.copy(fullscreen = v) } }
     if (com.cloudstreampc.player.PlayerSurface.supported && s.player == com.cloudstreampc.core.PlayerKind.MPV) {
         SettingsSwitch(
-            "Vidéo dans la fenêtre de l'application",
-            "Sinon, mpv s'ouvre dans sa propre fenêtre. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P",
-            s.embeddedPlayer,
-        ) { v -> Store.updateSettings { it.copy(embeddedPlayer = v) } }
+            "Vidéo dans la fenêtre de l'application (expérimental)",
+            "Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P",
+            s.playerInWindow,
+        ) { v -> Store.updateSettings { it.copy(playerInWindow = v) } }
     }
     RemoteControlItem()
     SettingsChoice(
