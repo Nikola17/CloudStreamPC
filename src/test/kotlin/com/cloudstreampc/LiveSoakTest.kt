@@ -35,6 +35,7 @@ class LiveSoakTest {
         @Volatile var frozen = false
         @Volatile var paused = false
         @Volatile var since = System.currentTimeMillis()
+        @Volatile var channel = ""
         /** After a zap: positions of the old channel until the new one is loaded. */
         @Volatile var awaitingFile = false
 
@@ -64,6 +65,7 @@ class LiveSoakTest {
             channels.forEachIndexed { index, (name, urls) ->
                 val relayUrl = LiveRelay.open(urls.mapIndexed { i, u -> LiveSource(u, label = "$name ${i + 1}") })
                 watch.restart()
+                watch.channel = name
                 watch.awaitingFile = index > 0
                 if (index == 0) {
                     val link = runBlocking { newExtractorLink("soak", name, relayUrl, ExtractorLinkType.VIDEO) }
@@ -79,12 +81,12 @@ class LiveSoakTest {
                             when (property) {
                                 "paused-for-cache" -> if (value.asBoolean() && watch.firstPlay != null && !watch.paused) {
                                     watch.paused = true; watch.pauses++; watch.pausedSince = now
-                                    println("  [$name] %6.1fs pause de mise en tampon".format(t))
+                                    println("  [${watch.channel}] %6.1fs pause de mise en tampon".format(t))
                                 } else if (!value.asBoolean() && watch.paused) {
                                     watch.paused = false; watch.pausedMs += now - (watch.pausedSince ?: now)
-                                    println("  [$name] %6.1fs reprise après %.1f s".format(t, (now - (watch.pausedSince ?: now)) / 1000.0))
+                                    println("  [${watch.channel}] %6.1fs reprise après %.1f s".format(t, (now - (watch.pausedSince ?: now)) / 1000.0))
                                 }
-                                "eof-reached" -> if (value.asBoolean()) { watch.eofs++; println("  [$name] %6.1fs fin du flux".format(t)) }
+                                "eof-reached" -> if (value.asBoolean()) { watch.eofs++; println("  [${watch.channel}] %6.1fs fin du flux".format(t)) }
                                 "time-pos" -> if (value.isNumber && !watch.awaitingFile) {
                                     if (watch.firstPlay == null) { watch.firstPlay = now; watch.lastPos = null }
                                     val previous = watch.lastPos
