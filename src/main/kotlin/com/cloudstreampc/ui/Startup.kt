@@ -188,13 +188,5 @@ private fun UpdateNotice() {
             release = runCatching { withContext(Dispatchers.IO) { Updates.check(APP_VERSION) } }.getOrNull()
         }
     }
-    release?.let { r ->
-        AlertDialog(
-            onDismissRequest = { release = null },
-            title = { Text("CloudStreamPC ${r.version} est disponible") },
-            text = { Text(r.notes?.take(600) ?: "Une nouvelle version est disponible.") },
-            confirmButton = { Button(onClick = { openInBrowser(r.url); release = null }) { Text("Télécharger") } },
-            dismissButton = { TextButton(onClick = { release = null }) { Text("Plus tard") } },
-        )
-    }
+    release?.let { r -> UpdateDialog(r) { release = null } }
 }

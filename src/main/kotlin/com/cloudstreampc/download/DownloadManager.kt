@@ -79,7 +79,14 @@ object DownloadManager {
 
     val folder: File
         get() = (Store.settings.downloadDir?.let(::File)
-            ?: File(System.getProperty("user.home"), "Videos/CloudStreamPC")).apply { mkdirs() }
+            ?: defaultFolder()).apply { mkdirs() }
+
+    /** Videos\CloudStreamPC (Windows, Linux) or Movies/CloudStreamPC (macOS). */
+    private fun defaultFolder(): File {
+        val home = System.getProperty("user.home")
+        val isMac = System.getProperty("os.name").lowercase().contains("mac")
+        return File(home, if (isMac) "Movies/CloudStreamPC" else "Videos/CloudStreamPC")
+    }
 
     fun applyParallelSetting() {
         permits = Semaphore(Store.settings.parallelDownloads.coerceIn(1, 5))

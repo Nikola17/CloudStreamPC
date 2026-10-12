@@ -46,6 +46,7 @@ private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 fun main() {
     Logger.install()
+    com.cloudstreampc.core.CrashReport.install()
     Network.apply(Store.settings.dns)
     com.cloudstreampc.plugins.PluginManager.configureLibrary()
 
@@ -100,6 +101,19 @@ fun main() {
                 },
             )
         }
+        // A crash of the window: report saved, offered to the user, then the app closes cleanly.
+        @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.window.LocalWindowExceptionHandlerFactory provides
+                androidx.compose.ui.window.WindowExceptionHandlerFactory { window ->
+                    androidx.compose.ui.window.WindowExceptionHandler { error ->
+                        Logger.error("Plantage de la fenêtre", error)
+                        showCrashDialog(window, error)
+                        window.dispose()
+                        kotlin.system.exitProcess(1)
+                    }
+                },
+        ) {
         Window(
             onCloseRequest = { if (Store.settings.confirmExit) confirmExit = true else exitApplication() },
             state = state,
@@ -129,6 +143,32 @@ fun main() {
                     )
                 }
             }
+        }
+        }
+    }
+}
+
+/** Swing dialog (Compose may be broken at this point): report saved, copied or posted on GitHub. */
+private fun showCrashDialog(parent: java.awt.Window?, error: Throwable) {
+    val tr = com.cloudstreampc.ui.I18n::tr
+    val report = com.cloudstreampc.core.CrashReport.build(com.cloudstreampc.ui.APP_VERSION, error)
+    val file = runCatching { com.cloudstreampc.core.CrashReport.save(report) }.getOrNull()
+    val options = arrayOf(tr("Signaler sur GitHub"), tr("Copier le rapport"), tr("Fermer"))
+    val message = tr("CloudStreamPC a rencontré un problème et doit se fermer.") + "\n" +
+        (file?.let { tr("Rapport enregistré dans {}").replace("{}", it.path) + "\n" } ?: "") +
+        tr("Le rapport ne contient ni mots de passe ni clés.")
+    val choice = javax.swing.JOptionPane.showOptionDialog(
+        parent, message, "CloudStreamPC", javax.swing.JOptionPane.DEFAULT_OPTION, javax.swing.JOptionPane.ERROR_MESSAGE,
+        null, options, options[0],
+    )
+    when (choice) {
+        0 -> runCatching {
+            val title = "Plantage : ${error.javaClass.simpleName}: ${error.message.orEmpty().take(80)}"
+            java.awt.Desktop.getDesktop().browse(java.net.URI(com.cloudstreampc.core.CrashReport.issueUrl(title, report)))
+        }
+        1 -> runCatching {
+            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(report), null)
+            javax.swing.JOptionPane.showMessageDialog(parent, tr("Rapport copié"), "CloudStreamPC", javax.swing.JOptionPane.INFORMATION_MESSAGE)
         }
     }
 }

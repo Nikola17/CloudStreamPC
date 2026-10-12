@@ -122,7 +122,7 @@ object ExternalPlayer {
             "--script=${File(dir, "scripts/uosc").path}",
             "--script=${File(dir, "scripts/cloudstreampc.lua").path}",
             "--osd-fonts-dir=${File(dir, "fonts").path}",
-            "--script-opts-append=uosc-languages=fr,en",
+            "--script-opts-append=uosc-languages=" + if (settings.language == "en") "en" else "fr,en",
             "--script-opts-append=uosc-controls=$controls",
             "--script-opts-append=uosc-color=foreground=$accent,foreground_text=ffffff",
             "--script-opts-append=uosc-timeline_style=bar",
@@ -200,6 +200,7 @@ object ExternalPlayer {
             }
         } else {
             candidates += listOf(File("/usr/bin/$exe"), File("/usr/local/bin/$exe"), File("/opt/homebrew/bin/$exe"))
+            if (kind == PlayerKind.MPV) candidates += File("/Applications/mpv.app/Contents/MacOS/mpv")
             if (kind == PlayerKind.VLC) candidates += File("/Applications/VLC.app/Contents/MacOS/VLC")
         }
         return candidates.firstOrNull { it.isFile }

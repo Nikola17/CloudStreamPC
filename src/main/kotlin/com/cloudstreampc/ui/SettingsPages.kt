@@ -367,3 +367,31 @@ fun LogViewerDialog(onDismiss: () -> Unit) {
         }
     }
 }
+
+/** "Signaler un problème": the report (already cleaned of secrets) to read, copy or post on GitHub. */
+@Composable
+fun ReportDialog(onDismiss: () -> Unit) {
+    val text = remember { com.cloudstreampc.core.CrashReport.build(APP_VERSION, null, logLines = 80) }
+    var title by remember { mutableStateOf("") }
+    InfoDialog("Signaler un problème", onDismiss) {
+        androidx.compose.material3.OutlinedTextField(
+            title, { title = it }, singleLine = true, label = { Text("Le problème en une phrase") },
+            modifier = Modifier.width(620.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            androidx.compose.material3.Button(onClick = {
+                openInBrowser(com.cloudstreampc.core.CrashReport.issueUrl(title.ifBlank { "Problème" }, text))
+            }) { Text("Signaler sur GitHub") }
+            OutlinedButton(onClick = {
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(text), null)
+            }) { Text("Copier le rapport") }
+        }
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(top = 8.dp).size(width = 620.dp, height = 360.dp).background(Color.Black)) {
+            item {
+                SelectionContainer {
+                    Text(text, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(8.dp))
+                }
+            }
+        }
+    }
+}

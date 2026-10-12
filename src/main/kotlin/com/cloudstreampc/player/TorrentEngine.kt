@@ -41,7 +41,7 @@ object TorrentEngine {
 
     /** TorrServer shipped with the app, or installed on the system. */
     fun executable(): File? {
-        val names = if (isWindows) listOf("TorrServer.exe", "TorrServer-windows-amd64.exe") else listOf("TorrServer", "TorrServer-linux-amd64", "torrserver")
+        val names = if (isWindows) listOf("TorrServer.exe", "TorrServer-windows-amd64.exe") else listOf("TorrServer", "TorrServer-linux-amd64", "TorrServer-darwin-arm64", "TorrServer-darwin-amd64", "torrserver")
         System.getProperty("compose.application.resources.dir")?.let { dir ->
             names.map { File(dir, "torrserver/$it") }.firstOrNull { it.isFile }?.let { return it }
         }
@@ -56,8 +56,7 @@ object TorrentEngine {
     suspend fun ensureStarted() = mutex.withLock {
         if (alive()) return@withLock
         check(managed) { "Moteur torrent injoignable." }
-        val exe = executable() ?: error("Moteur torrent (TorrServer) introuvable.")
-        if (!isWindows) exe.setExecutable(true)
+        val exe = executable()?.let(com.cloudstreampc.core.Bundled::runnable) ?: error("Moteur torrent (TorrServer) introuvable.")
         val dir = File(AppDirs.root, "torrserver").apply { mkdirs() }
         Logger.info("Démarrage du moteur torrent sur le port $port")
         process = ProcessBuilder(exe.path, "-p", "$port", "-d", dir.path, "--ip", "127.0.0.1")

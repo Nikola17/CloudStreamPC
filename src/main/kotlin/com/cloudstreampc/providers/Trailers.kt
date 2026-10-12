@@ -63,10 +63,11 @@ object Trailers {
             ?: details.path("trailers").firstNotNullOfOrNull { it.path("source").asText().takeIf { s -> s.length == 11 } }
     }
 
-    /** yt-dlp shipped with the app (Windows), or the one installed on the system. */
+    /** yt-dlp shipped with the app, or the one installed on the system. */
     fun ytDlp(): String? {
         val exe = if (isWindows) "yt-dlp.exe" else "yt-dlp"
-        System.getProperty("compose.application.resources.dir")?.let { File(it, "yt-dlp/$exe") }?.takeIf { it.isFile }?.let { return it.path }
+        System.getProperty("compose.application.resources.dir")?.let { File(it, "yt-dlp/$exe") }?.takeIf { it.isFile }
+            ?.let { return com.cloudstreampc.core.Bundled.runnable(it).path }
         return System.getenv("PATH")?.split(File.pathSeparator)?.map { File(it, exe) }?.firstOrNull { it.isFile }?.path
     }
 

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "2.5.0"
+version = "2.6.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -70,10 +70,10 @@ compose.desktop {
         jvmArgs += listOf("-Xmx1g", "--enable-native-access=ALL-UNNAMED", "-Dfile.encoding=UTF-8")
 
         nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
+            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg)
             packageName = "CloudStreamPC"
             packageVersion = project.version.toString()
-            description = "CloudStream pour Windows"
+            description = "CloudStream pour ordinateur"
             vendor = "CloudStreamPC"
             // From `./gradlew suggestRuntimeModules`, plus TLS (crypto.ec), legacy page charsets and zip.
             modules(
@@ -92,7 +92,19 @@ compose.desktop {
                 iconFile.set(project.file("icons/icon.ico"))
             }
             linux {
+                packageName = "cloudstreampc"
+                debMaintainer = "cloudstreampc@users.noreply.github.com"
+                menuGroup = "AudioVideo"
+                appCategory = "AudioVideo"
+                shortcut = true
                 iconFile.set(project.file("icons/icon.png"))
+            }
+            macOS {
+                bundleID = "io.github.nikola17.cloudstreampc"
+                dockName = "CloudStreamPC"
+                appCategory = "public.app-category.entertainment"
+                // Made from icons/icon.png by the macOS build (sips + iconutil).
+                project.file("icons/icon.icns").takeIf { it.isFile }?.let { iconFile.set(it) }
             }
         }
     }

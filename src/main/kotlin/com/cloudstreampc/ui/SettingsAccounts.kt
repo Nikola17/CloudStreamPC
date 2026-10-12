@@ -72,6 +72,7 @@ fun UpdateSettings() {
     val scope = rememberCoroutineScope()
     var update by remember { mutableStateOf<Updates.Release?>(null) }
     var logs by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf(false) }
 
     SettingsCategory("Mises à jour de l'application")
     SettingsItem("Vérifier les mises à jour", "Version installée : $APP_VERSION") {
@@ -131,18 +132,12 @@ fun UpdateSettings() {
 
     SettingsCategory("Actions")
     SettingsItem("Afficher les journaux", "Utile pour signaler un problème") { logs = true }
+    SettingsItem("Signaler un problème", "Ouvre un signalement GitHub avec le système et la fin du journal (sans mots de passe ni clés)") { report = true }
     SettingsItem("Refaire la configuration initiale") { Store.updateSettings { it.copy(firstLaunchDone = false) } }
 
-    update?.let { release ->
-        AlertDialog(
-            onDismissRequest = { update = null },
-            title = { Text("CloudStreamPC ${release.version} est disponible") },
-            text = { Text(release.notes?.take(800) ?: "Une nouvelle version est disponible.") },
-            confirmButton = { Button(onClick = { openInBrowser(release.url); update = null }) { Text("Télécharger") } },
-            dismissButton = { TextButton(onClick = { update = null }) { Text("Plus tard") } },
-        )
-    }
+    update?.let { release -> UpdateDialog(release) { update = null } }
     if (logs) LogViewerDialog { logs = false }
+    if (report) ReportDialog { report = false }
 }
 
 @Composable

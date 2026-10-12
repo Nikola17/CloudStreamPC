@@ -1,6 +1,6 @@
 # CloudStreamPC
 
-**CloudStream pour Windows.** Une application de bureau qui reprend l'interface et les fonctions de
+**CloudStream pour Windows, macOS et Linux.** Une application de bureau qui reprend l'interface et les fonctions de
 l'application [CloudStream](https://github.com/recloudstream/cloudstream) (version TV) et charge
 **les mêmes extensions (`.cs3`)**, plus les **comptes IPTV** (Xtream Codes / M3U) et les
 **addons Stremio**.
@@ -18,6 +18,27 @@ l'application [CloudStream](https://github.com/recloudstream/cloudstream) (versi
 Java et le lecteur vidéo [mpv](https://mpv.io) sont inclus : rien d'autre à installer.
 Au premier lancement, un assistant propose d'installer les extensions CloudStream FR, d'ajouter un
 compte IPTV et le catalogue Stremio.
+
+### Linux (64 bits)
+
+Téléchargez `CloudStreamPC-x.y.z-amd64.deb` (Ubuntu, Debian, Mint…) ou `CloudStreamPC-x.y.z-x86_64.rpm`
+(Fedora, openSUSE…) et ouvrez-le, ou `sudo apt install ./CloudStreamPC-x.y.z-amd64.deb`. Sans paquet :
+`CloudStreamPC-x.y.z-linux-x64.tar.gz`, à décompresser, puis lancez `CloudStreamPC/bin/CloudStreamPC`.
+Installez aussi mpv : `sudo apt install mpv` (ou `sudo dnf install mpv`).
+
+### macOS (Apple Silicon)
+
+Ouvrez `CloudStreamPC-x.y.z-macos-arm64.dmg` et glissez CloudStreamPC dans Applications, puis installez mpv
+(`brew install mpv`, ou l'application mpv dans Applications). L'application n'est pas notariée par Apple :
+au premier lancement, faites un clic droit sur CloudStreamPC → **Ouvrir** (ou
+`xattr -cr /Applications/CloudStreamPC.app`). Pas de version pour les Mac Intel pour l'instant.
+
+### Mises à jour
+
+Quand une nouvelle version sort, l'application le signale au démarrage (ou Paramètres → Mises à jour et
+Sauvegarde → Vérifier les mises à jour). **Installer maintenant** télécharge l'installateur de votre système,
+vérifie son empreinte SHA-256 avec celle publiée, le lance et ferme CloudStreamPC ; vos données sont conservées.
+La version portable Windows reçoit l'installateur classique.
 
 ## Captures d'écran
 
@@ -155,8 +176,13 @@ souris pour revenir en arrière.
 Dans mpv : `Espace` pause, `F` plein écran, `←`/`→` ±5 s, `↑`/`↓` ±1 min, `J` sous-titres, `#` piste audio,
 `Entrée` « Passer l'intro » / « Épisode suivant » quand le bouton est affiché, `N` épisode suivant, `Q` quitter.
 
-Les données sont dans `%APPDATA%\CloudStreamPC` ; les téléchargements dans `Vidéos\CloudStreamPC`.
-En cas de problème : Paramètres → Mises à jour et Sauvegarde → Afficher les journaux.
+Les données sont dans `%APPDATA%\CloudStreamPC` (macOS : `~/Library/Application Support/CloudStreamPC`,
+Linux : `~/.local/share/CloudStreamPC`) ; les téléchargements dans `Vidéos\CloudStreamPC` (macOS : `Films`).
+
+**En cas de problème** : Paramètres → Mises à jour et Sauvegarde → **Signaler un problème** ouvre un
+signalement GitHub prérempli (version, système, fin du journal). Si l'application plante, une fenêtre propose
+la même chose et le rapport est enregistré dans le dossier `logs`. Les mots de passe, identifiants IPTV, jetons
+et clés sont retirés du rapport avant qu'il ne quitte l'ordinateur ; relisez-le avant d'envoyer.
 
 ## Signature de l'application
 
@@ -169,6 +195,10 @@ variables → Actions) ; la compilation signe alors automatiquement :
 - **Certificat dans Azure Key Vault** (cas général : depuis 2023 les clés doivent rester dans un module
   matériel) : `AZURE_KEY_VAULT_URI`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_CERT_NAME`.
 - **Fichier .pfx** : `WINDOWS_CERTIFICATE_PFX` (contenu du .pfx en base64) et `WINDOWS_CERTIFICATE_PASSWORD`.
+
+Tout est prêt côté compilation : il ne manque que le certificat, qui doit être acheté et établi au nom de
+son propriétaire (environ 100 à 400 € par an selon l'autorité ; Azure Trusted Signing est l'option la moins chère).
+Pour macOS, la notarisation demande un compte Apple Developer (99 $ par an).
 
 Sans certificat, les fichiers ne sont pas signés ; leurs empreintes SHA-256 sont publiées dans
 `SHA256SUMS.txt` avec chaque version. Le lancement manuel de la compilation propose un test de la chaîne
@@ -190,6 +220,8 @@ de signature avec un certificat jetable (sans publier de version).
 - L'anglais traduit l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
 - Les bandes-annonces passent par YouTube : si YouTube change, une mise à jour de yt-dlp (incluse dans
   la version suivante) peut être nécessaire.
+- Sous macOS et Linux, mpv n'est pas inclus : il faut l'installer (voir Installation). Les versions macOS et
+  Linux sont compilées et testées automatiquement mais ont été moins essayées que la version Windows.
 
 ## Comment ça marche
 
@@ -221,6 +253,8 @@ Prérequis : JDK 21.
 ./gradlew test                   # tests (IPTV, guide TV, téléchargements HLS, mpv, AniSkip, dépôts…)
 ./gradlew test -Dtest.network=true -Dtest.search=true   # tests réseau (extensions réelles, Cinemeta)
 ./gradlew packageExe packageMsi  # installateurs (à lancer sous Windows)
+./gradlew packageDeb packageRpm  # paquets Linux (fakeroot et rpm requis)
+./gradlew packageDmg             # image macOS (à lancer sous macOS)
 ```
 
 Chaque envoi sur `main` compile les installateurs Windows avec GitHub Actions et les publie dans une release.
