@@ -180,12 +180,28 @@ fun PlayerSettings() {
         Store.updateSettings { it.copy(skip85Button = v) }
     }
 
+    SettingsCategory("TV en direct")
+    SettingsChoice(
+        "Tampon du direct",
+        listOf(3 to "Rapide (3 s)", 8 to "Équilibré (8 s)", 20 to "Stabilité maximale (20 s)"),
+        s.liveBuffer,
+    ) { v -> Store.updateSettings { it.copy(liveBuffer = v) } }
+    Text(
+        "Avance gardée par le lecteur : une coupure plus courte ne se voit pas. Plus elle est grande, plus la chaîne met de temps à démarrer.",
+        color = CsColors.TextMuted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp),
+    )
+    SettingsSwitch(
+        "Reconnexion sans coupure",
+        "Les chaînes IPTV passent par un relais qui se reconnecte en une fraction de seconde et bascule sur une source de secours (autre format, autre compte)",
+        s.liveRelay,
+    ) { v -> Store.updateSettings { it.copy(liveRelay = v) } }
+
     SettingsCategory("Torrents")
     val torrentEngine = com.cloudstreampc.player.TorrentEngine.executable()
     SettingsSwitch(
         "Lire les torrents",
         if (torrentEngine != null) "Liens magnet des extensions et des addons Stremio (Torrentio…), avec le moteur intégré"
-        else "Moteur torrent (TorrServer) introuvable",
+        else "Liens magnet des extensions et des addons Stremio (Torrentio…). Le moteur (60 Mo) se télécharge au premier torrent",
         s.torrentsEnabled,
     ) { v -> Store.updateSettings { it.copy(torrentsEnabled = v) } }
 

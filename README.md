@@ -23,7 +23,7 @@ compte IPTV et le catalogue Stremio.
 
 Téléchargez `CloudStreamPC-x.y.z-amd64.deb` (Ubuntu, Debian, Mint…) ou `CloudStreamPC-x.y.z-x86_64.rpm`
 (Fedora, openSUSE…) et ouvrez-le, ou `sudo apt install ./CloudStreamPC-x.y.z-amd64.deb`. Sans paquet :
-`CloudStreamPC-x.y.z-linux-x64.tar.gz`, à décompresser, puis lancez `CloudStreamPC/bin/CloudStreamPC`.
+`CloudStreamPC-x.y.z-linux-x64.tar.xz`, à décompresser, puis lancez `CloudStreamPC/bin/CloudStreamPC`.
 Installez aussi mpv : `sudo apt install mpv` (ou `sudo dnf install mpv`).
 
 ### macOS (Apple Silicon)
@@ -39,6 +39,14 @@ Quand une nouvelle version sort, l'application le signale au démarrage (ou Para
 Sauvegarde → Vérifier les mises à jour). **Installer maintenant** télécharge l'installateur de votre système,
 vérifie son empreinte SHA-256 avec celle publiée, le lance et ferme CloudStreamPC ; vos données sont conservées.
 La version portable Windows reçoit l'installateur classique.
+
+### Taille
+
+L'application est faite pour être légère à télécharger : installateur compressé en LZMA2 (Windows) ou xz
+(Linux), parties inutilisées de l'interface retirées, bibliothèques natives des autres systèmes enlevées,
+et outils lourds (moteur torrent, lecteur de bandes-annonces) téléchargés seulement si vous vous en servez.
+Par rapport à la version 2.6 : paquet Linux de 142 à 50 Mo. Chaque version publiée est comparée à la précédente,
+et la publication s'arrête si un fichier grossit de plus de 10 %.
 
 ## Captures d'écran
 
@@ -83,9 +91,24 @@ bouton « +85 s ». Par-dessus, les boutons de CloudStreamPC :
   connu, sinon à la fin de l'épisode). L'épisode suivant se charge **dans la même fenêtre**, sans quitter le
   plein écran, avec sa meilleure source. Touche `N` ou bouton de la barre de contrôle à tout moment.
 
+**TV en direct sans coupure** : les chaînes IPTV passent par un relais intégré à l'application. Quand le flux
+du fournisseur coupe, se fige ou renvoie une erreur, le relais se reconnecte en une fraction de seconde et
+recolle le flux ; le lecteur garde quelques secondes d'avance (réglage « Tampon du direct » : 3, 8 ou 20 s)
+et l'image continue sans écran noir. Si la chaîne ne revient pas, il passe tout seul sur une source de secours :
+l'autre format du même abonnement (MPEG-TS ou HLS), puis la même chaîne sur vos autres comptes IPTV.
+Essai : avec une coupure du fournisseur toutes les 30 secondes, la lecture ne s'est jamais arrêtée.
+- **Une seule connexion à la fois** au fournisseur (la plupart des abonnements n'en permettent qu'une) : changer de
+  chaîne réutilise la même fenêtre et ferme d'abord l'ancien flux.
+- **Zapping dans le lecteur** : `Page préc.` / `Page suiv.` (ou les gâchettes de la manette) pour la chaîne
+  précédente / suivante, `C` pour la liste des chaînes de la catégorie avec le programme en cours.
+- **Revoir** : sur les chaînes qui ont des archives (catch-up), un programme passé du guide se regarde depuis le début.
+- Date d'expiration et nombre de connexions de l'abonnement affichés dans Comptes IPTV ; identité du lecteur
+  (User-Agent : VLC, IPTV Smarters…) réglable par compte pour les fournisseurs qui l'exigent.
+
 **Guide TV** (bouton « Guide TV » de l'accueil) : grille des programmes des comptes IPTV (guide XMLTV du
 fournisseur, mis en cache 12 h), filtre par catégorie, ligne de l'heure actuelle, progression du programme
-en cours ; un clic lance la chaîne. La fiche d'une chaîne affiche « En ce moment » et « Ensuite ».
+en cours, jusqu'à 24 h en arrière quand le fournisseur garde des archives ; un clic lance la chaîne.
+La fiche d'une chaîne affiche « En ce moment » et « Ensuite ».
 
 **Nouveaux épisodes** : les séries en favoris et celles regardées ces 60 derniers jours sont vérifiées au
 démarrage puis toutes les 6 heures. Les sorties apparaissent dans une rangée « Nouveaux épisodes » de
@@ -93,7 +116,8 @@ l'accueil, dans la Bibliothèque (pastille sur son icône) et en notification Wi
 
 **Bandes-annonces** : après quelques secondes sur un titre, la bannière de l'accueil lance sa bande-annonce
 sans le son, comme sur les plateformes ; bouton « Bande-annonce » (avec le son) sur les fiches. La vidéo
-vient de l'extension ou du catalogue Cinemeta, lue depuis YouTube grâce à [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+vient de l'extension ou du catalogue Cinemeta, lue depuis YouTube grâce à [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+(téléchargé à la première bande-annonce et tenu à jour, car YouTube change souvent).
 
 **Fiches** : saisons, épisodes, VF/VOSTFR, progression, distribution, recommandations, favoris,
 téléchargement d'un film ou d'un épisode. Elles sont complétées par le catalogue Cinemeta (note IMDb, réalisateur, images
@@ -125,7 +149,7 @@ ordinateurs ; favoris, historique, progression et goûts de chaque profil y sont
 et suppressions des deux côtés).
 
 **Torrents** : les liens magnet des extensions et des addons Stremio (Torrentio…) se lisent avec le moteur
-[TorrServer](https://github.com/YouROK/TorrServer) inclus : la vidéo démarre pendant le téléchargement, et le bon
+[TorrServer](https://github.com/YouROK/TorrServer) (téléchargé au premier torrent, 60 Mo, empreinte vérifiée) : la vidéo démarre pendant le téléchargement, et le bon
 épisode est choisi dans les torrents de saison complète. Les sources directes restent prioritaires.
 Au premier torrent, Windows peut demander d'autoriser TorrServer sur le réseau (nécessaire pour les pairs).
 
@@ -186,8 +210,8 @@ et clés sont retirés du rapport avant qu'il ne quitte l'ordinateur ; relisez-l
 
 ## Signature de l'application
 
-Les versions publiées peuvent être signées (Authenticode SHA-256 horodaté) : installateur `.exe`, `.msi`
-et exécutable de la version portable. Il faut un certificat de signature de code au nom de son
+Les versions publiées peuvent être signées (Authenticode SHA-256 horodaté) : installateur `.exe` et
+exécutable de l'application. Il faut un certificat de signature de code au nom de son
 propriétaire, délivré par une autorité reconnue par Windows (vérification d'identité obligatoire).
 Une fois le certificat obtenu, il suffit d'ajouter des secrets au dépôt GitHub (Settings → Secrets and
 variables → Actions) ; la compilation signe alors automatiquement :
@@ -217,6 +241,8 @@ de signature avec un certificat jetable (sans publier de version).
 - Le guide TV dépend du guide XMLTV fourni par le compte IPTV ; les chaînes des extensions n'en ont pas.
 - « Passer l'intro » n'est automatique que pour les animés présents dans AniSkip et les vidéos à chapitres ;
   ailleurs, le bouton « +85 s » de la barre de contrôle avance d'un générique type.
+- Le relais du direct gère les flux MPEG-TS et HLS (y compris chiffrés AES-128) ; les rares chaînes en
+  segments fMP4 sont lues directement par mpv, qui se reconnecte aussi tout seul mais sans source de secours.
 - L'anglais traduit l'interface, pas le contenu : titres, résumés et genres restent ceux des extensions.
 - Les bandes-annonces passent par YouTube : si YouTube change, une mise à jour de yt-dlp (incluse dans
   la version suivante) peut être nécessaire.
@@ -240,7 +266,7 @@ de signature avec un certificat jetable (sans publier de version).
 ## Composants inclus
 
 [mpv](https://mpv.io) (GPL), [uosc](https://github.com/tomasklaen/uosc) 5.9.2 (LGPL-2.1, non modifié),
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
+téléchargés au premier besoin : [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) et [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
 [JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), [Jamepad](https://github.com/libgdx/Jamepad) et SDL2 (Apache-2.0 / zlib), polices Outfit et Inter (SIL OFL), bibliothèque
 CloudStream (GPL-3.0).
 

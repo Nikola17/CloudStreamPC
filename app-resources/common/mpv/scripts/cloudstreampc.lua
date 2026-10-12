@@ -11,6 +11,7 @@ local opts = {
     auto_next = true,
     auto_skip = false,
     skip_button = true,
+    live = false,         -- live TV: the end of the stream means "reconnect", never "quit"
 }
 options.read_options(opts, 'cloudstreampc')
 
@@ -281,6 +282,11 @@ end)
 -- `--keep-open` keeps the window at the end: play the next episode or quit.
 mp.observe_property('eof-reached', 'bool', function(_, eof)
     if not eof then return end
+    if opts.live then
+        msg('Reconnexion…', 3)
+        mp.commandv('script-message', 'cspc-live-eof')
+        return
+    end
     if opts.has_next and opts.auto_next then
         trigger_next('fin de la vidéo')
     elseif not opts.has_next then
@@ -317,5 +323,24 @@ end)
 
 mp.register_script_message('next', function() trigger_next('commande') end)
 mp.add_key_binding('N', 'cspc-next-episode', function() trigger_next('touche N') end)
+
+-- Live TV: next / previous channel and the channel list (the app answers with the new channel).
+local function zap(delta)
+    if not opts.live then return end
+    mp.commandv('script-message', 'cspc-zap', tostring(delta))
+end
+mp.register_script_message('zap', function(delta) zap(tonumber(delta) or 1) end)
+mp.register_script_message('channels', function()
+    if opts.live then mp.commandv('script-message', 'cspc-channels') end
+end)
+mp.register_script_message('zap-to', function(url)
+    if url and url ~= '' then mp.commandv('script-message', 'cspc-zap-to', url) end
+end)
+mp.register_script_message('status', function(text) msg(text, 3) end)
+mp.add_key_binding('PGUP', 'cspc-channel-previous', function() zap(-1) end)
+mp.add_key_binding('PGDWN', 'cspc-channel-next', function() zap(1) end)
+mp.add_key_binding('c', 'cspc-channel-list', function()
+    if opts.live then mp.commandv('script-message', 'cspc-channels') end
+end)
 
 mp.add_periodic_timer(0.2, render)

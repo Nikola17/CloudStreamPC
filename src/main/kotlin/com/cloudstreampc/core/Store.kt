@@ -45,6 +45,8 @@ data class IptvAccount(
     val username: String = "",
     val password: String = "",
     val enabled: Boolean = true,
+    /** User-Agent sent to this provider; empty = the app's default. */
+    val userAgent: String = "",
 )
 
 /**
@@ -109,6 +111,10 @@ data class Settings(
     val tmdbApiKey: String = "",
     /** Game controllers drive the app and the player. */
     val gamepadEnabled: Boolean = true,
+    /** Live TV: seconds kept ahead in the player (3 fast start, 8 balanced, 20 steadiest). */
+    val liveBuffer: Int = 8,
+    /** Live TV goes through the local relay that reconnects without cutting the picture. */
+    val liveRelay: Boolean = true,
     /** Interface language: "fr" or "en". */
     val language: String = "fr",
 

@@ -44,7 +44,8 @@ data class PlayRequest(
     val playable: Playable get() = queue[index]
     val next: PlayRequest?
         get() = if (index + 1 < queue.size) copy(index = index + 1, autoPlay = true, failedSources = emptyList()) else null
-    val isLive: Boolean get() = response is LiveStreamLoadResponse
+    /** A live channel (a replay of a past programme plays like a video). */
+    val isLive: Boolean get() = response is LiveStreamLoadResponse && !playable.data.startsWith("catchup|")
     val savedItem: SavedItem
         get() = SavedItem(response.name, response.url, response.apiName, response.posterUrl, response.type.name, response.year)
 }
@@ -96,6 +97,11 @@ object PlaybackManager {
         /** Between "next episode" and the start of its file: position updates are not for the new episode. */
         @Volatile var switching = false
         @Volatile var pendingSubtitles: List<SubtitleFile> = emptyList()
+        /** Live: the provider's link (played directly if the relay cannot handle it) and whether the relay is used. */
+        @Volatile var direct: ExtractorLink? = null
+        @Volatile var relayed = false
+        /** Live: times the stream ended, to stop retrying a channel that is really off. */
+        val liveEnds = java.util.concurrent.CopyOnWriteArrayList<Long>()
 
         fun save() {
             val pos = position ?: return
@@ -111,8 +117,28 @@ object PlaybackManager {
 
     private fun titleOf(playable: Playable) = listOfNotNull(playable.title, playable.label).joinToString(" · ")
 
+    /** The player window showing live TV, reused when changing channel. */
+    private class LiveWindow(val session: Session, val process: Process, val ipcPath: String?)
+
+    @Volatile private var liveWindow: LiveWindow? = null
+
     /** Launches the player for [link] (after preparing a torrent) and follows the playback until it is closed. */
     fun play(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
+        if (request.isLive) {
+            pending = null
+            nextUp = null
+            val window = liveWindow?.takeIf { it.process.isAlive && it.ipcPath != null }
+            scope.launch {
+                runCatching {
+                    if (window != null) changeChannel(window.session, window.ipcPath!!, request, link)
+                    else launchLive(request, link, subtitles)
+                }.onFailure {
+                    Logger.error("Direct ${request.response.name}", it)
+                    pending = request.copy(autoPlay = false, chooseManually = true, failedSources = request.failedSources + link.name)
+                }
+            }
+            return
+        }
         if (!TorrentEngine.isTorrent(link)) return launch(request, link, subtitles)
         pending = null
         status = "Torrent : connexion aux sources…"
@@ -136,17 +162,106 @@ object PlaybackManager {
         }
     }
 
-    private fun launch(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
+    /** What the player opens for a live link: the relay's address, or the link itself. */
+    private suspend fun liveTarget(request: PlayRequest, link: ExtractorLink): Pair<ExtractorLink, Boolean> {
+        if (!LiveTv.relayed(request)) return link to false
+        val url = LiveRelay.open(LiveTv.sources(request, link))
+        return com.lagradost.cloudstream3.utils.newExtractorLink(link.source, link.name, url, com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO) {
+            quality = link.quality
+        } to true
+    }
+
+    private suspend fun launchLive(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
+        // One connection to the provider at a time: the previous live window goes first.
+        liveWindow?.process?.takeIf { it.isAlive }?.destroy()
+        LiveRelay.close()
+        val (target, relayed) = liveTarget(request, link)
+        launch(request, target, subtitles, direct = link, relayed = relayed)
+    }
+
+    /** Another channel in the same player window: no new window, no second connection. */
+    private suspend fun changeChannel(session: Session, ipcPath: String, request: PlayRequest, link: ExtractorLink) {
+        val (target, relayed) = liveTarget(request, link)
+        val headers = if (relayed) emptyMap() else link.getAllHeaders()
+        val userAgent = headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: com.lagradost.cloudstream3.USER_AGENT
+        val sent = MpvIpc.send(
+            ipcPath,
+            listOf("set_property", "user-agent", userAgent),
+            listOf("set_property", "force-media-title", titleOf(request.playable)),
+            listOf("loadfile", target.url, "replace"),
+            listOf("set_property", "pause", false),
+        )
+        if (!sent) return launchLive(request, link, emptyList())
+        session.request = request
+        session.sourceName = link.name
+        session.direct = link
+        session.relayed = relayed
+        session.liveEnds.clear()
+        session.itemStartedAt = System.currentTimeMillis()
+        started(request, link.name)
+        MpvIpc.toScript(ipcPath, "status", request.response.name)
+    }
+
+    /** Next / previous channel or a channel of the list, asked from the player. */
+    private suspend fun zap(session: Session, ipcPath: String, target: PlayRequest?) {
+        if (target == null) return
+        val resolved = LinkResolver.resolve(target)
+        val best = bestLink(resolved.links)
+        if (best == null) {
+            MpvIpc.toScript(ipcPath, "status", "Chaîne indisponible : ${target.response.name}")
+            return
+        }
+        changeChannel(session, ipcPath, target, best)
+    }
+
+    /** The live stream ended (the relay gave up, or a direct stream dropped): start it again. */
+    private suspend fun liveEnded(session: Session, ipcPath: String) {
+        val now = System.currentTimeMillis()
+        // The previous channel's stream closing while the next one loads is not an interruption.
+        if (now - session.itemStartedAt < 5_000) return
+        session.liveEnds.removeIf { now - it > 120_000 }
+        session.liveEnds += now
+        if (session.liveEnds.size > 5) {
+            MpvIpc.toScript(ipcPath, "status", "Chaîne indisponible pour le moment")
+            return
+        }
+        delay(1_500)
+        val direct = session.direct ?: return
+        val request = session.request
+        // Sources the relay cannot read (fMP4, DRM…): let the player read the provider directly.
+        val (target, relayed) = if (session.relayed && LiveRelay.lastGiveUpUnreadable) direct to false else liveTarget(request, direct)
+        session.relayed = relayed
+        val headers = if (relayed) emptyMap() else direct.getAllHeaders()
+        val userAgent = headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: com.lagradost.cloudstream3.USER_AGENT
+        MpvIpc.send(ipcPath, listOf("set_property", "user-agent", userAgent), listOf("loadfile", target.url, "replace"), listOf("set_property", "pause", false))
+    }
+
+    private fun launch(
+        request: PlayRequest,
+        link: ExtractorLink,
+        subtitles: List<SubtitleFile>,
+        direct: ExtractorLink? = null,
+        relayed: Boolean = false,
+    ) {
         val settings = Store.settings
-        val ipcPath = if (settings.player == PlayerKind.MPV && !request.isLive) MpvIpc.newServerPath() else null
+        val ipcPath = if (settings.player == PlayerKind.MPV) MpvIpc.newServerPath() else null
         val process = ExternalPlayer.play(
             link, titleOf(request.playable), subtitles, resumePosition(request), ipcPath,
             hasNext = ipcPath != null && request.next != null,
+            live = request.isLive,
         )
         pending = null
         nextUp = null
         val session = Session(request, link.name)
+        session.direct = direct ?: link
+        session.relayed = relayed
         started(request, link.name)
+        if (request.isLive) {
+            liveWindow = LiveWindow(session, process, ipcPath)
+            LiveRelay.onStatus = { text ->
+                if (liveWindow?.session === session && ipcPath != null) scope.launch { MpvIpc.toScript(ipcPath, "status", text) }
+            }
+        }
         scope.launch { follow(session, process, ipcPath) }
         if (ipcPath != null) {
             scope.launch { sendSegments(ipcPath, request) }
@@ -193,8 +308,20 @@ object PlaybackManager {
                 ipcPath, process,
                 onEvent = { name, args ->
                     when (name) {
-                        "client-message" -> if (args.firstOrNull() == "cspc-next") {
-                            scope.launch { playNextInPlayer(session, ipcPath) }
+                        "client-message" -> when (args.firstOrNull()) {
+                            "cspc-next" -> scope.launch { playNextInPlayer(session, ipcPath) }
+                            "cspc-live-eof" -> scope.launch { liveEnded(session, ipcPath) }
+                            "cspc-zap" -> scope.launch {
+                                zap(session, ipcPath, LiveTv.neighbour(session.request, args.getOrNull(1)?.toIntOrNull() ?: 1))
+                            }
+                            "cspc-zap-to" -> scope.launch {
+                                val provider = session.request.api as? com.cloudstreampc.providers.IptvProvider
+                                val url = args.getOrNull(1)
+                                if (provider != null && url != null) zap(session, ipcPath, LiveTv.requestFor(provider, url))
+                            }
+                            "cspc-channels" -> scope.launch {
+                                LiveTv.channelMenu(session.request)?.let { menu -> MpvIpc.send(ipcPath, listOf("script-message-to", "uosc", "open-menu", menu)) }
+                            }
                         }
                         "start-file" -> if (session.switching) {
                             session.switching = false
@@ -224,6 +351,10 @@ object PlaybackManager {
             }
         }
         val exitCode = process.waitFor()
+        if (liveWindow?.session === session) {
+            liveWindow = null
+            LiveRelay.close()
+        }
         if (!session.switching) session.save()
         val request = session.request
         runCatching { com.cloudstreampc.core.Taste.recordOutcome(request.response, session.position, session.duration) }

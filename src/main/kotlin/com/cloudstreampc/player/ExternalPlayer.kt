@@ -36,6 +36,7 @@ object ExternalPlayer {
         startAt: Double? = null,
         ipcPath: String? = null,
         hasNext: Boolean = false,
+        live: Boolean = false,
     ): Process {
         val settings = Store.settings
         val kind = settings.player
@@ -52,7 +53,8 @@ object ExternalPlayer {
                 if (settings.fullscreen) command += "--fs"
                 if (startAt != null) command += "--start=+${startAt.toInt()}"
                 if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
-                command += interfaceArgs(hasNext)
+                command += interfaceArgs(hasNext, live)
+                if (live) command += liveArgs()
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
                 command += "--sub-font-size=${settings.subtitleSize}"
@@ -92,7 +94,33 @@ object ExternalPlayer {
      * Modern controls (uosc) plus our "Passer l'intro" / "Épisode suivant" buttons,
      * when the player is mpv and the interface is enabled.
      */
-    fun interfaceArgs(hasNext: Boolean): List<String> {
+    /**
+     * Live TV: keep [Settings.liveBuffer] seconds ahead (a cut shorter than that is never seen),
+     * reconnect by itself if the stream drops, and skip damaged packets instead of stopping.
+     */
+    fun liveArgs(): List<String> {
+        val buffer = Store.settings.liveBuffer.coerceIn(2, 60)
+        return listOf(
+            "--cache=yes",
+            "--cache-pause=yes",
+            "--cache-pause-initial=yes",
+            "--cache-pause-wait=$buffer",
+            "--demuxer-max-bytes=256MiB",
+            "--demuxer-max-back-bytes=64MiB",
+            "--demuxer-readahead-secs=${maxOf(60, buffer * 4)}",
+            "--network-timeout=20",
+            "--hls-bitrate=max",
+            "--demuxer-lavf-o-append=fflags=+discardcorrupt",
+            "--demuxer-lavf-analyzeduration=1.5",
+            "--demuxer-lavf-probesize=2000000",
+            "--stream-lavf-o-append=reconnect=1",
+            "--stream-lavf-o-append=reconnect_streamed=1",
+            "--stream-lavf-o-append=reconnect_on_network_error=1",
+            "--stream-lavf-o-append=reconnect_delay_max=4",
+        )
+    }
+
+    fun interfaceArgs(hasNext: Boolean, live: Boolean = false): List<String> {
         val settings = Store.settings
         val dir = scriptsDir()
         if (settings.player != PlayerKind.MPV || !settings.playerInterface || dir == null) return emptyList()
@@ -105,10 +133,15 @@ object ExternalPlayer {
             add("<stream>stream-quality")
             add("gap")
             add("space")
-            add("<video,audio>speed")
+            if (!live) add("<video,audio>speed")
             add("space")
-            if (settings.skip85Button) add("command:fast_forward:seek 85?Avancer de 85 s")
+            if (settings.skip85Button && !live) add("command:fast_forward:seek 85?Avancer de 85 s")
             if (hasNext) add("command:skip_next:script-message-to cloudstreampc next?Épisode suivant (N)")
+            if (live) {
+                add("command:skip_previous:script-message-to cloudstreampc zap -1?Chaîne précédente (Page préc.)")
+                add("command:list:script-message-to cloudstreampc channels?Chaînes (C)")
+                add("command:skip_next:script-message-to cloudstreampc zap 1?Chaîne suivante (Page suiv.)")
+            }
             add("gap")
             add("fullscreen")
         }.joinToString(",")
@@ -127,6 +160,7 @@ object ExternalPlayer {
             "--script-opts-append=uosc-color=foreground=$accent,foreground_text=ffffff",
             "--script-opts-append=uosc-timeline_style=bar",
             "--script-opts-append=cloudstreampc-has_next=${yesNo(hasNext)}",
+            "--script-opts-append=cloudstreampc-live=${yesNo(live)}",
             "--script-opts-append=cloudstreampc-auto_next=${yesNo(settings.autoPlayNextEpisode)}",
             "--script-opts-append=cloudstreampc-auto_skip=${yesNo(settings.autoSkipIntro)}",
             "--script-opts-append=cloudstreampc-skip_button=${yesNo(settings.skipIntroButton)}",

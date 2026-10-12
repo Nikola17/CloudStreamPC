@@ -315,8 +315,11 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                             }
                             trailer?.let { id ->
                                 FilledTonalButton(onClick = {
-                                    runCatching { ExternalPlayer.playTrailer(com.cloudstreampc.providers.Trailers.youtubeUrl(id), "${data.name} · Bande-annonce") }
-                                        .onFailure { nav.toast(it.message ?: "Impossible de lancer le lecteur") }
+                                    scope.launch {
+                                        com.cloudstreampc.providers.Trailers.ytDlpOrDownload()
+                                        runCatching { ExternalPlayer.playTrailer(com.cloudstreampc.providers.Trailers.youtubeUrl(id), "${data.name} · Bande-annonce") }
+                                            .onFailure { nav.toast(it.message ?: "Impossible de lancer le lecteur") }
+                                    }
                                 }) {
                                     Icon(AppIcons.VideoLibrary, null)
                                     Spacer(Modifier.width(6.dp))

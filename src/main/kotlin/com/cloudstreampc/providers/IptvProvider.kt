@@ -50,9 +50,23 @@ internal data class IptvItem(
     val extra: String? = null,
     /** Channel id in the XMLTV guide. */
     val epgId: String? = null,
+    /** Days of replay the provider keeps for this channel (Xtream `tv_archive`), 0 when none. */
+    val archiveDays: Int = 0,
 ) {
     enum class Kind { LIVE, MOVIE, SERIES }
 }
+
+/** What the Xtream server says about the subscription (`user_info` / `server_info`). */
+data class IptvAccountInfo(
+    val maxConnections: Int? = null,
+    val activeConnections: Int? = null,
+    /** Epoch ms; null when the subscription has no end. */
+    val expiresAt: Long? = null,
+    /** Stream formats allowed by the plan, in the server's order ("ts", "m3u8"…). */
+    val formats: List<String> = emptyList(),
+    val status: String? = null,
+    val timezone: String? = null,
+)
 
 /**
  * An IPTV account shown as a CloudStream provider: live TV, movies and series,
@@ -79,6 +93,18 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     val guide = EpgStore(account.id.ifBlank { Integer.toHexString(account.url.hashCode()) })
 
     private val server get() = mainUrl.substringBefore("/player_api.php").trimEnd('/')
+
+    /** Subscription details, read with the catalog (Xtream only). */
+    @Volatile var info: IptvAccountInfo? = null
+        private set
+
+    /** Username and password as they go in stream paths. */
+    private val pathUser get() = pathEnc(account.username)
+    private val pathPass get() = pathEnc(account.password)
+
+    /** Headers every request of this account sends (some panels only answer their usual players). */
+    val streamHeaders: Map<String, String>
+        get() = account.userAgent.trim().takeIf { it.isNotEmpty() }?.let { mapOf("User-Agent" to it) }.orEmpty()
     private val auth get() = "username=${enc(account.username)}&password=${enc(account.password)}"
 
     override val mainPage: List<MainPageData>
@@ -119,7 +145,12 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     // ----- Xtream Codes -----
 
     private suspend fun xtream(action: String, extra: String = ""): JsonNode =
-        mapper.readTree(app.get("$server/player_api.php?$auth&action=$action$extra", timeout = 90).text)
+        mapper.readTree(app.get("$server/player_api.php?$auth&action=$action$extra", headers = streamHeaders, timeout = 90).text)
+
+    private suspend fun readAccountInfo(): IptvAccountInfo? = runCatching {
+        val root = mapper.readTree(app.get("$server/player_api.php?$auth", headers = streamHeaders, timeout = 30).text)
+        parseAccountInfo(root)
+    }.onFailure { Logger.info("IPTV ${account.name} : infos du compte illisibles (${it.message})") }.getOrNull()
 
     private suspend fun loadXtream(): List<IptvItem> {
         val items = mutableListOf<IptvItem>()
@@ -127,12 +158,15 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             runCatching { xtream(action).items().associate { it.str("category_id").orEmpty() to (it.str("category_name") ?: "Autres") } }
                 .getOrDefault(emptyMap())
 
+        info = readAccountInfo()
+        info?.let { Logger.info("IPTV ${account.name} : $it") }
         val liveCats = categoryNames("get_live_categories")
         runCatching { xtream("get_live_streams") }.getOrNull().items().forEach {
             items += IptvItem(
                 IptvItem.Kind.LIVE, it.str("stream_id") ?: return@forEach, it.str("name") ?: return@forEach,
                 liveCats[it.str("category_id")] ?: "Autres", it.str("stream_icon"),
                 epgId = it.str("epg_channel_id")?.ifBlank { null },
+                archiveDays = if (it.str("tv_archive") == "1") it.str("tv_archive_duration")?.toIntOrNull() ?: 0 else 0,
             )
         }
         val vodCats = categoryNames("get_vod_categories")
@@ -160,7 +194,7 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     private data class M3uEpisode(val name: String, val season: Int?, val episode: Int?, val url: String, val poster: String?)
 
     private suspend fun loadM3u(): List<IptvItem> {
-        val text = app.get(account.url, timeout = 120).text
+        val text = app.get(account.url, headers = streamHeaders, timeout = 120).text
         require(text.trimStart().startsWith("#EXTM3U") || text.contains("#EXTINF")) { "Ce lien n'est pas une playlist M3U." }
         val items = mutableListOf<IptvItem>()
         val series = linkedMapOf<String, MutableList<M3uEpisode>>()
@@ -410,11 +444,13 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     ): Boolean {
         val kind = data.substringBefore("|")
         val value = data.substringAfter("|")
-        val user = account.username
-        val pass = account.password
+        val user = pathUser
+        val pass = pathPass
         val links: List<Pair<String, String>> = when (kind) {
             "live" -> if (account.type == IptvType.XTREAM) {
-                listOf("HLS" to "$server/live/$user/$pass/$value.m3u8", "MPEG-TS" to "$server/live/$user/$pass/$value.ts")
+                liveFormats().map { format ->
+                    (if (format == "m3u8") "HLS" else "MPEG-TS") to "$server/live/$user/$pass/$value.$format"
+                }
             } else {
                 val item = catalogOrLoad().firstOrNull { it.kind == IptvItem.Kind.LIVE && it.id == value }
                 listOfNotNull(item?.extra?.let { "Direct" to it })
@@ -422,21 +458,112 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
             "movie" -> listOf("Film" to "$server/movie/$user/$pass/$value")
             "series" -> listOf("Épisode" to "$server/series/$user/$pass/$value")
             "direct" -> listOf("Direct" to value)
+            // Replay of a past programme: catchup|<stream id>|<start epoch s>|<minutes>
+            "catchup" -> value.split("|").takeIf { it.size == 3 }?.let { (id, start, minutes) ->
+                listOf("Revoir" to catchupUrl(id, start.toLong() * 1000, minutes.toInt()))
+            }.orEmpty()
             else -> emptyList()
         }
-        links.forEach { (label, link) ->
+        links.forEachIndexed { index, (label, link) ->
             val type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
             callback(newExtractorLink(name, "${account.name} · $label", link, type) {
-                // Live HLS first: it adapts to the connection.
-                quality = if (label == "HLS") 1080 else 720
+                // In the order the plan prefers (the live relay makes MPEG-TS the steadiest).
+                quality = 1080 - index
+                headers = streamHeaders
             })
         }
         return links.isNotEmpty()
     }
 
+    /** Live formats to offer, best first: MPEG-TS (continuous, relayed without cuts) then HLS, as the plan allows. */
+    private fun liveFormats(): List<String> {
+        val allowed = info?.formats.orEmpty().filter { it == "ts" || it == "m3u8" }
+        return listOf("ts", "m3u8").filter { allowed.isEmpty() || it in allowed }
+    }
+
+    /** Xtream replay address: the start is written in the server's time zone. */
+    internal fun catchupUrl(streamId: String, startMs: Long, minutes: Int): String {
+        val zone = info?.timezone?.let { runCatching { java.time.ZoneId.of(it) }.getOrNull() } ?: java.time.ZoneId.systemDefault()
+        val start = java.time.Instant.ofEpochMilli(startMs).atZone(zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd:HH-mm"))
+        return "$server/timeshift/$pathUser/$pathPass/$minutes/$start/$streamId.ts"
+    }
+
+    /** Some channels of this account keep replays. */
+    suspend fun hasReplay(): Boolean = account.type == IptvType.XTREAM && catalogOrLoad().any { it.kind == IptvItem.Kind.LIVE && it.archiveDays > 0 }
+
+    /** Replay is possible for this channel and this moment. */
+    suspend fun canReplay(channelUrl: String, startMs: Long): Boolean {
+        val item = liveItem(channelUrl) ?: return false
+        val days = item.archiveDays
+        return account.type == IptvType.XTREAM && days > 0 && startMs < System.currentTimeMillis() &&
+            System.currentTimeMillis() - startMs < days * 86_400_000L
+    }
+
+    /** Data to give [loadLinks] for the replay of a programme. */
+    suspend fun replayData(channelUrl: String, startMs: Long, stopMs: Long): String? {
+        val item = liveItem(channelUrl) ?: return null
+        val minutes = ((stopMs - startMs) / 60_000).toInt().coerceAtLeast(1)
+        return "catchup|${item.id}|${startMs / 1000}|$minutes"
+    }
+
+    private suspend fun liveItem(channelUrl: String): IptvItem? {
+        val path = channelUrl.removePrefix("$scheme/")
+        if (!path.startsWith("live/", true)) return null
+        val id = dec(path.substringAfter("/"))
+        return catalogOrLoad().firstOrNull { it.kind == IptvItem.Kind.LIVE && it.id == id }
+    }
+
+    /** This account's way to play a channel known by its guide id or name, if it has it. */
+    internal suspend fun sameChannel(epgId: String?, name: String): IptvItem? {
+        val channels = catalogOrLoad().filter { it.kind == IptvItem.Kind.LIVE }
+        epgId?.lowercase()?.let { id -> channels.firstOrNull { it.epgId?.lowercase() == id }?.let { return it } }
+        val wanted = channelKey(name)
+        return channels.firstOrNull { channelKey(it.name) == wanted }
+    }
+
+    /** Links of a channel of this account (no network: Xtream links are built from the account). */
+    internal suspend fun liveLinks(item: IptvItem): List<ExtractorLink> {
+        val links = mutableListOf<ExtractorLink>()
+        loadLinks("live|${item.id}", false, {}) { links += it }
+        return links
+    }
+
+    /** Channel known by its page address: guide id and name, to find it on other accounts. */
+    suspend fun channelIdentity(channelUrl: String): Pair<String?, String>? = liveItem(channelUrl)?.let { it.epgId to it.name }
+
+    /** Channels of the same category, in order, for "chaîne suivante / précédente". */
+    suspend fun neighbours(channelUrl: String): List<GuideChannel> {
+        val item = liveItem(channelUrl) ?: return emptyList()
+        return catalogOrLoad().filter { it.kind == IptvItem.Kind.LIVE && it.category == item.category }
+            .map { GuideChannel(it.name, it.poster, it.category, it.epgId, it.toSearchResponse().url) }
+    }
+
     companion object {
         fun enc(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)
         fun dec(value: String): String = URLDecoder.decode(value, Charsets.UTF_8)
+        /** Encoding for a path segment (a space is %20, not +). */
+        fun pathEnc(value: String): String = enc(value).replace("+", "%20")
+
+        /** "TF1 HD", "FR| TF1 FHD", "TF1 (backup)" → "tf1": to recognize a channel across accounts. */
+        fun channelKey(name: String): String = name.lowercase()
+            .replace(Regex("""^\s*[a-z]{2,3}\s*[|:-]\s*"""), "")
+            .replace(Regex("""\b(fhd|uhd|hd|sd|4k|hevc|h265|1080p?|720p?|backup|direct|live)\b|\(.*?\)|\[.*?]"""), " ")
+            .let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "") }
+            .replace(Regex("[^a-z0-9+]+"), "")
+
+        internal fun parseAccountInfo(root: JsonNode): IptvAccountInfo? {
+            val user = root.get("user_info") ?: return null
+            fun text(node: JsonNode?, key: String) = node?.get(key)?.takeUnless { it.isNull }?.asText()?.ifBlank { null }
+            return IptvAccountInfo(
+                maxConnections = text(user, "max_connections")?.toIntOrNull(),
+                activeConnections = text(user, "active_cons")?.toIntOrNull(),
+                expiresAt = text(user, "exp_date")?.toLongOrNull()?.takeIf { it > 0 }?.times(1000),
+                formats = user.get("allowed_output_formats")?.map { it.asText() }.orEmpty(),
+                status = text(user, "status"),
+                timezone = text(root.get("server_info"), "timezone"),
+            )
+        }
 
         /** Checks an account and returns a short description ("1234 chaînes, 567 films..."). */
         suspend fun test(account: IptvAccount): String {

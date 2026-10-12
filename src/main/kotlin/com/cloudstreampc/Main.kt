@@ -44,6 +44,9 @@ import java.awt.event.MouseEvent
 
 private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+/** Mouse "back" button as Java numbers it: on Linux, 4 and 5 are the horizontal scroll of touchpads. */
+private val backButton = if (System.getProperty("os.name").lowercase().contains("linux")) 6 else 4
+
 fun main() {
     Logger.install()
     com.cloudstreampc.core.CrashReport.install()
@@ -127,7 +130,7 @@ fun main() {
             // Mouse "back" button (button 4) navigates back, like in a browser.
             DisposableEffect(Unit) {
                 val listener = AWTEventListener { e ->
-                    if (e is MouseEvent && e.id == MouseEvent.MOUSE_RELEASED && e.button == 4) nav.back()
+                    if (e is MouseEvent && e.id == MouseEvent.MOUSE_RELEASED && e.button == backButton) nav.back()
                 }
                 Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK)
                 onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(listener) }

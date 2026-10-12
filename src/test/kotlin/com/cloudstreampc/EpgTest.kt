@@ -38,7 +38,7 @@ class EpgTest {
             <desc lang="fr">L'actualité &amp; la météo.</desc>
           </programme>
           <programme start="${at(30)}" stop="${at(120)}" channel="France2.fr"><title>Film du soir</title></programme>
-          <programme start="${at(-600)}" stop="${at(-500)}" channel="France2.fr"><title>Trop ancien</title></programme>
+          <programme start="${at(-2000)}" stop="${at(-1900)}" channel="France2.fr"><title>Trop ancien</title></programme>
           <programme start="${at(0)}" stop="${at(60)}" channel="Autre.fr"><title>Autre chaîne</title></programme>
         </tv>"""
     }

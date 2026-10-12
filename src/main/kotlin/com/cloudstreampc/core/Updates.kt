@@ -22,6 +22,7 @@ object Updates {
     private val os = System.getProperty("os.name").lowercase()
     private val isWindows = "win" in os
     private val isMac = "mac" in os
+    private val arch = System.getProperty("os.arch").lowercase()
 
     /** Latest CloudStreamPC release on GitHub, if newer than [current]. */
     suspend fun check(current: String): Release? {
@@ -40,8 +41,8 @@ object Updates {
 
     /** Release files that install this version here, best first (names given by the build, see build.yml). */
     internal fun installerNames(version: String): List<String> = when {
-        isWindows -> listOf("CloudStreamPC-$version-setup.exe", "CloudStreamPC-$version.msi")
-        isMac -> listOf("CloudStreamPC-$version-macos-arm64.dmg")
+        isWindows -> listOf("CloudStreamPC-$version-setup.exe")
+        isMac -> listOf(if ("aarch64" in arch || "arm64" in arch) "CloudStreamPC-$version-macos-arm64.dmg" else "CloudStreamPC-$version-macos-x64.dmg")
         File("/usr/bin/dpkg").exists() -> listOf("CloudStreamPC-$version-amd64.deb")
         File("/usr/bin/rpm").exists() -> listOf("CloudStreamPC-$version-x86_64.rpm")
         else -> emptyList()
@@ -92,7 +93,8 @@ object Updates {
     /** Opens the installer (Windows setup, .dmg, or the system's package installer); the app then quits. */
     fun launch(installer: File) {
         val command = when {
-            isWindows -> listOf(installer.path)
+            // Inno Setup: progress window only, closes the app, installs, then starts the new version.
+            isWindows -> listOf(installer.path, "/SILENT", "/SP-", "/NOCANCEL", "/CLOSEAPPLICATIONS", "/LANG=" + if (Store.settings.language == "en") "en" else "fr")
             isMac -> listOf("open", installer.path)
             else -> listOf("xdg-open", installer.path)
         }

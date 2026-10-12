@@ -48,7 +48,7 @@ fun PlaybackOverlays(modifier: Modifier = Modifier) {
     }
     PlaybackManager.nowPlaying?.let { NowPlayingBar(it, modifier) }
     CastBar(modifier)
-    PlaybackManager.status?.let { message ->
+    (com.cloudstreampc.core.OnDemand.progress ?: PlaybackManager.status)?.let { message ->
         Row(
             modifier.padding(16.dp).clip(RoundedCornerShape(12.dp)).background(CsColors.SurfaceHigh)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -117,7 +117,9 @@ private fun NowPlayingBar(playing: NowPlaying, modifier: Modifier) {
             )
             val position = playing.position
             val duration = playing.duration
-            if (position != null && duration != null && duration > 0) {
+            if (playing.request.isLive) {
+                Text("En direct · ${playing.sourceName}", fontSize = 12.sp, color = CsColors.TextMuted)
+            } else if (position != null && duration != null && duration > 0) {
                 LinearProgressIndicator(
                     progress = { (position / duration).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).height(3.dp),

@@ -45,10 +45,12 @@ object TorrentEngine {
         System.getProperty("compose.application.resources.dir")?.let { dir ->
             names.map { File(dir, "torrserver/$it") }.firstOrNull { it.isFile }?.let { return it }
         }
+        com.cloudstreampc.core.OnDemand.installed(com.cloudstreampc.core.OnDemand.Tool.TORRSERVER)?.let { return it }
         return System.getenv("PATH")?.split(File.pathSeparator)?.flatMap { dir -> names.map { File(dir, it) } }?.firstOrNull { it.isFile }
     }
 
-    val available get() = Store.settings.torrentsEnabled && (!managed || executable() != null)
+    /** Torrents can be played (the engine is downloaded on the first one when needed). */
+    val available get() = Store.settings.torrentsEnabled
 
     private suspend fun alive(): Boolean = runCatching { app.get("$base/echo", timeout = 2).isSuccessful }.getOrDefault(false)
 
@@ -56,7 +58,8 @@ object TorrentEngine {
     suspend fun ensureStarted() = mutex.withLock {
         if (alive()) return@withLock
         check(managed) { "Moteur torrent injoignable." }
-        val exe = executable()?.let(com.cloudstreampc.core.Bundled::runnable) ?: error("Moteur torrent (TorrServer) introuvable.")
+        val exe = (executable() ?: com.cloudstreampc.core.OnDemand.ensure(com.cloudstreampc.core.OnDemand.Tool.TORRSERVER))
+            .let(com.cloudstreampc.core.Bundled::runnable)
         val dir = File(AppDirs.root, "torrserver").apply { mkdirs() }
         Logger.info("Démarrage du moteur torrent sur le port $port")
         process = ProcessBuilder(exe.path, "-p", "$port", "-d", dir.path, "--ip", "127.0.0.1")

@@ -143,7 +143,7 @@ class EpgStore(private val key: String) {
                     }
                 }
                 if (file.isFile) {
-                    programmes = file.inputStream().use { XmlTv.parse(it, now - 3 * 3600_000L, now + 26 * 3600_000L, channels) }
+                    programmes = file.inputStream().use { XmlTv.parse(it, now - 25 * 3600_000L, now + 26 * 3600_000L, channels) }
                     loadedAt = now
                     Logger.info("Guide TV : ${programmes.size} chaînes, ${programmes.values.sumOf { it.size }} programmes")
                 }

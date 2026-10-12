@@ -82,6 +82,8 @@ fun TvGuideScreen() {
     var category by remember(provider) { mutableStateOf<String?>(null) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var selected by remember { mutableStateOf<Pair<IptvProvider.GuideChannel, Programme>?>(null) }
+    /** How far back the guide goes: a day when the provider keeps replays, else half an hour. */
+    var pastMs by remember(provider) { mutableLongStateOf(HALF_HOUR) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -94,11 +96,12 @@ fun TvGuideScreen() {
         val current = provider ?: return@LaunchedEffect
         channels = runCatching { withContext(Dispatchers.IO) { current.channels() } }.getOrDefault(emptyList())
         programmes = runCatching { withContext(Dispatchers.IO) { current.loadGuide() } }.getOrDefault(emptyMap())
+        if (runCatching { withContext(Dispatchers.IO) { current.hasReplay() } }.getOrDefault(false)) pastMs = 24 * 3600_000L
         loadingGuide = false
     }
 
-    val windowStart = remember { now - now % HALF_HOUR - HALF_HOUR }
-    val windowEnd = windowStart + WINDOW_HOURS * 3600_000L
+    val windowStart = remember(pastMs) { now - now % HALF_HOUR - pastMs }
+    val windowEnd = remember(pastMs) { now - now % HALF_HOUR - HALF_HOUR + WINDOW_HOURS * 3600_000L }
     val timeline = rememberScrollState()
     val density = LocalDensity.current
     fun scrollToNow() = scope.launch {
@@ -109,6 +112,22 @@ fun TvGuideScreen() {
         scope.launch {
             val response = runCatching { withContext(Dispatchers.IO) { api.load(channel.url) } }.getOrNull()
             if (response == null || !PlayQueue.play(api, response, autoPlay = true)) nav.toast("Impossible d'ouvrir ${channel.name}")
+        }
+    }
+
+    fun replay(channel: IptvProvider.GuideChannel, programme: Programme) {
+        val api = provider ?: return
+        scope.launch {
+            val request = runCatching {
+                withContext(Dispatchers.IO) {
+                    val response = api.load(channel.url) ?: return@withContext null
+                    val data = api.replayData(channel.url, programme.start, programme.stop) ?: return@withContext null
+                    com.cloudstreampc.player.PlayRequest(
+                        api, response, listOf(com.cloudstreampc.player.Playable(data, programme.title, channel.name)), 0, autoPlay = true,
+                    )
+                }
+            }.getOrNull()
+            if (request == null) nav.toast("Impossible d'ouvrir ${channel.name}") else com.cloudstreampc.player.PlaybackManager.request(request)
         }
     }
 
@@ -148,7 +167,7 @@ fun TvGuideScreen() {
             )
         }
 
-        LaunchedEffect(Unit) { scrollToNow() }
+        LaunchedEffect(windowStart) { scrollToNow() }
         TimeHeader(windowStart, windowEnd, now, timeline)
         val shown = remember(list, category) { list.filter { category == null || it.category == category } }
         LazyColumn(Modifier.fillMaxSize()) {
@@ -164,6 +183,10 @@ fun TvGuideScreen() {
 
     selected?.let { (channel, programme) ->
         val onAir = programme.isOn(now)
+        var replayable by remember(programme) { mutableStateOf(false) }
+        LaunchedEffect(programme) {
+            if (programme.stop <= now) replayable = runCatching { provider?.canReplay(channel.url, programme.start) == true }.getOrDefault(false)
+        }
         AlertDialog(
             onDismissRequest = { selected = null },
             title = {
@@ -174,6 +197,12 @@ fun TvGuideScreen() {
             },
             text = { Text(programme.description ?: "Pas de résumé.", color = CsColors.TextMuted) },
             confirmButton = {
+                if (replayable) {
+                    Button(onClick = { selected = null; replay(channel, programme) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.PlayArrow, null)
+                        Text("  Revoir")
+                    }
+                }
                 if (onAir) {
                     Button(onClick = { selected = null; play(channel) }) {
                         Icon(androidx.compose.material.icons.Icons.Default.PlayArrow, null)

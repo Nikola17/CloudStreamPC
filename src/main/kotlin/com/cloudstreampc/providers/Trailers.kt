@@ -1,5 +1,7 @@
 package com.cloudstreampc.providers
 
+import com.cloudstreampc.core.OnDemand
+
 import com.cloudstreampc.core.AppDirs
 import com.cloudstreampc.core.Logger
 import com.cloudstreampc.core.Recommender
@@ -63,18 +65,28 @@ object Trailers {
             ?: details.path("trailers").firstNotNullOfOrNull { it.path("source").asText().takeIf { s -> s.length == 11 } }
     }
 
-    /** yt-dlp shipped with the app, or the one installed on the system. */
+    /** yt-dlp shipped with the app, downloaded by it, or installed on the system. */
     fun ytDlp(): String? {
         val exe = if (isWindows) "yt-dlp.exe" else "yt-dlp"
         System.getProperty("compose.application.resources.dir")?.let { File(it, "yt-dlp/$exe") }?.takeIf { it.isFile }
             ?.let { return com.cloudstreampc.core.Bundled.runnable(it).path }
+        OnDemand.installed(OnDemand.Tool.YTDLP)?.let { return it.path }
         return System.getenv("PATH")?.split(File.pathSeparator)?.map { File(it, exe) }?.firstOrNull { it.isFile }?.path
+    }
+
+    /** yt-dlp, downloaded the first time a trailer is wanted (and refreshed when old: YouTube changes). */
+    suspend fun ytDlpOrDownload(): String? {
+        if (OnDemand.outdated(OnDemand.Tool.YTDLP)) {
+            runCatching { OnDemand.ensure(OnDemand.Tool.YTDLP, refresh = true) }.onFailure { Logger.info("yt-dlp : ${it.message}") }
+        }
+        ytDlp()?.let { return it }
+        return runCatching { OnDemand.ensure(OnDemand.Tool.YTDLP).path }.onFailure { Logger.info("yt-dlp : ${it.message}") }.getOrNull()
     }
 
     /** Direct video stream (no sound, 720p at most) of a YouTube trailer, for the home banner. */
     suspend fun silentStream(youtubeId: String): String? = withContext(Dispatchers.IO) {
         synchronized(streams) { streams[youtubeId] }?.takeIf { System.currentTimeMillis() - it.second < 3600_000L }?.let { return@withContext it.first }
-        val ytDlp = ytDlp() ?: return@withContext null
+        val ytDlp = ytDlpOrDownload() ?: return@withContext null
         val process = ProcessBuilder(
             ytDlp, "-g", "--no-warnings", "--no-playlist",
             "-f", "bv*[height<=720][vcodec^=avc1]/bv*[height<=720]/b[height<=720]/b",

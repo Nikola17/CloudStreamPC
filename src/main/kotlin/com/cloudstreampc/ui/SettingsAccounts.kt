@@ -363,6 +363,7 @@ fun IptvSettings() {
                     (if (account.type == IptvType.XTREAM) "Xtream Codes · ${account.username} · " else "Playlist M3U · ") + account.url,
                     color = CsColors.TextMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                accountInfoLine(account)?.let { Text(it, color = CsColors.TextMuted, fontSize = 13.sp) }
             }
             Switch(account.enabled, { v -> save(s.iptvAccounts.map { if (it.id == account.id) it.copy(enabled = v) else it }) })
             IconButton(onClick = { editing = account }) { Icon(Icons.Default.Edit, "Modifier") }
@@ -397,6 +398,7 @@ private fun IptvAccountDialog(account: IptvAccount, onDismiss: () -> Unit, onSav
     var url by remember { mutableStateOf(account.url) }
     var user by remember { mutableStateOf(account.username) }
     var pass by remember { mutableStateOf(account.password) }
+    var userAgent by remember { mutableStateOf(account.userAgent) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -407,6 +409,7 @@ private fun IptvAccountDialog(account: IptvAccount, onDismiss: () -> Unit, onSav
         url = url.trim().let { if (it.isNotEmpty() && !it.startsWith("http")) "http://$it" else it },
         username = user.trim(),
         password = pass,
+        userAgent = userAgent.trim(),
     )
     val valid = url.isNotBlank() && (type == IptvType.M3U || (user.isNotBlank() && pass.isNotBlank()))
 
@@ -432,6 +435,7 @@ private fun IptvAccountDialog(account: IptvAccount, onDismiss: () -> Unit, onSav
                         visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                UserAgentChoice(userAgent) { userAgent = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(enabled = valid && !testing, onClick = {
                         testing = true
@@ -457,3 +461,35 @@ private fun IptvAccountDialog(account: IptvAccount, onDismiss: () -> Unit, onSav
     )
 }
 
+
+/** Identities some IPTV panels require (they only answer the players they know). */
+private val userAgentPresets = listOf(
+    "" to "Automatique",
+    "VLC/3.0.21 LibVLC/3.0.21" to "VLC",
+    "IPTVSmartersPro" to "IPTV Smarters",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" to "Navigateur",
+)
+
+@Composable
+private fun UserAgentChoice(value: String, onChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Se présenter comme", fontSize = 13.sp, color = CsColors.TextMuted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            userAgentPresets.forEach { (ua, label) -> FilterChip(value == ua, { onChange(ua) }, { Text(label) }) }
+        }
+        OutlinedTextField(value, onChange, singleLine = true, label = { Text("User-Agent") }, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** "Expire le 12/01/2027 · 1 connexion simultanée" from what the server said. */
+private fun accountInfoLine(account: IptvAccount): String? {
+    val info = com.cloudstreampc.player.LiveTv.iptvProviders().firstOrNull { it.account.id == account.id }?.info ?: return null
+    val parts = mutableListOf<String>()
+    info.expiresAt?.let {
+        val date = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        parts += I18n.tr("Expire le {}").replace("{}", date.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+    }
+    info.maxConnections?.let { parts += I18n.tr(if (it > 1) "{} connexions simultanées" else "{} connexion simultanée").replace("{}", "$it") }
+    info.status?.takeIf { !it.equals("Active", true) }?.let { parts += it }
+    return parts.joinToString(" · ").ifBlank { null }
+}

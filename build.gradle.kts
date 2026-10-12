@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "2.6.0"
+version = "2.7.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -67,6 +67,13 @@ tasks.test {
 compose.desktop {
     application {
         mainClass = "com.cloudstreampc.MainKt"
+        // Release builds drop the unused parts of Compose (see proguard-rules.pro).
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("proguard-rules.pro"))
+            obfuscate.set(false)
+            optimize.set(false)
+            joinOutputJars.set(false)
+        }
         jvmArgs += listOf("-Xmx1g", "--enable-native-access=ALL-UNNAMED", "-Dfile.encoding=UTF-8")
 
         nativeDistributions {
@@ -75,10 +82,12 @@ compose.desktop {
             packageVersion = project.version.toString()
             description = "CloudStream pour ordinateur"
             vendor = "CloudStreamPC"
-            // From `./gradlew suggestRuntimeModules`, plus TLS (crypto.ec), legacy page charsets and zip.
+            // From `./gradlew suggestRuntimeModules`, plus TLS (crypto.ec), legacy page charsets, zip and the
+            // JavaScript engine some extensions call through javax.script. jdk.httpserver runs the local
+            // servers: live TV relay, cast proxy and the sign-in page of AniList / MyAnimeList.
             modules(
-                "java.instrument", "java.management", "java.net.http", "java.sql", "java.naming",
-                "jdk.dynalink", "jdk.unsupported", "jdk.crypto.ec", "jdk.charsets", "jdk.zipfs",
+                "java.instrument", "java.management", "java.net.http", "java.sql", "java.naming", "java.scripting",
+                "jdk.dynalink", "jdk.unsupported", "jdk.crypto.ec", "jdk.charsets", "jdk.zipfs", "jdk.httpserver",
             )
             appResourcesRootDir.set(project.layout.projectDirectory.dir("app-resources"))
 

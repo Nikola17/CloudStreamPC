@@ -58,59 +58,50 @@ jobs:
           New-Item -ItemType Directory -Force app-resources/windows/mpv | Out-Null
           7z x mpv.7z -oapp-resources/windows/mpv -y | Out-Null
           if (-not (Test-Path app-resources/windows/mpv/mpv.exe)) { throw "mpv.exe absent de l'archive" }
-
-      # yt-dlp lets mpv read YouTube trailers. Latest release: YouTube changes often.
-      - name: Download yt-dlp
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force app-resources/windows/yt-dlp | Out-Null
-          $base = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
-          Invoke-WebRequest -Uri "$base/yt-dlp.exe" -OutFile app-resources/windows/yt-dlp/yt-dlp.exe
-          Invoke-WebRequest -Uri "$base/SHA2-256SUMS" -OutFile yt-dlp-sums.txt
-          $expected = (Select-String -Path yt-dlp-sums.txt -Pattern ' yt-dlp\.exe$').Line.Split(' ')[0]
-          $actual = (Get-FileHash app-resources/windows/yt-dlp/yt-dlp.exe -Algorithm SHA256).Hash.ToLower()
-          if ($expected -ne $actual) { throw "Somme de contrôle de yt-dlp.exe invalide" }
-          app-resources/windows/yt-dlp/yt-dlp.exe --version
-
-      # Torrent engine (GPL-3.0), pinned version.
-      - name: Download TorrServer
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force app-resources/windows/torrserver | Out-Null
-          Invoke-WebRequest -Uri "https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-windows-amd64.exe" -OutFile app-resources/windows/torrserver/TorrServer.exe
-          if ((Get-Item app-resources/windows/torrserver/TorrServer.exe).Length -lt 10MB) { throw "TorrServer.exe incomplet" }
+          # Only the player itself: no documentation, installer scripts or console wrapper.
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue app-resources/windows/mpv/doc, app-resources/windows/mpv/installer, app-resources/windows/mpv/mpv.com
+          Get-ChildItem app-resources/windows/mpv | Format-Table Name, Length
 
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
       - name: Test mpv IPC on Windows
         run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
 
-      - name: Build installers
-        run: ./gradlew --no-daemon packageMsi packageExe createDistributable
+      # Release build (unused parts of Compose removed), then jars stored for the installer's LZMA.
+      - name: Build the app
+        run: |
+          ./gradlew --no-daemon createReleaseDistributable
+          python scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC windows
 
-      - name: Collect files
+      - name: Sign the program
         shell: pwsh
         run: |
+          $test = "${{ inputs.test_signing }}" -eq "true"
+          ./scripts/sign.ps1 -Files (Get-Item build/compose/binaries/main-release/app/CloudStreamPC/CloudStreamPC.exe).FullName -TestCertificate:$test
+
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
           $v = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force dist | Out-Null
-          Get-ChildItem build/compose/binaries/main/msi/*.msi | Copy-Item -Destination "dist/CloudStreamPC-$v.msi"
-          Get-ChildItem build/compose/binaries/main/exe/*.exe | Copy-Item -Destination "dist/CloudStreamPC-$v-setup.exe"
+          $src = (Resolve-Path build/compose/binaries/main-release/app/CloudStreamPC).Path
+          $out = (Resolve-Path dist).Path
+          & $iscc /Q "/DAppVersion=$v" "/DSourceDir=$src" "/DOutputDir=$out" scripts/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué" }
 
-      - name: Sign
+      - name: Sign the installer
         shell: pwsh
         run: |
-          $files = @(Get-ChildItem dist/*.msi, dist/*.exe) + @(Get-Item build/compose/binaries/main/app/CloudStreamPC/CloudStreamPC.exe)
           $test = "${{ inputs.test_signing }}" -eq "true"
-          ./scripts/sign.ps1 -Files ($files | ForEach-Object FullName) -TestCertificate:$test
+          ./scripts/sign.ps1 -Files ((Get-ChildItem dist/*.exe) | ForEach-Object FullName) -TestCertificate:$test
 
-      - name: Portable zip and checksums
+      - name: Portable zip
         shell: pwsh
         run: |
           $v = "${{ steps.version.outputs.version }}"
-          Compress-Archive -Path build/compose/binaries/main/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v-portable.zip"
-          Get-ChildItem dist -File | ForEach-Object {
-            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
-          } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
-          Get-Content dist/SHA256SUMS.txt
+          Compress-Archive -CompressionLevel Optimal -Path build/compose/binaries/main-release/app/CloudStreamPC -DestinationPath "dist/CloudStreamPC-$v-portable.zip"
+          Get-ChildItem dist | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
@@ -133,33 +124,29 @@ jobs:
         id: version
         run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      # mpv comes from the system (apt install mpv); yt-dlp and TorrServer are bundled as on Windows.
-      - name: Download yt-dlp and TorrServer
-        run: |
-          mkdir -p app-resources/linux/yt-dlp app-resources/linux/torrserver
-          base=https://github.com/yt-dlp/yt-dlp/releases/latest/download
-          curl -fsSL "$base/yt-dlp_linux" -o app-resources/linux/yt-dlp/yt-dlp
-          curl -fsSL "$base/SHA2-256SUMS" -o yt-dlp-sums.txt
-          expected=$(awk '$2 == "yt-dlp_linux" {print $1}' yt-dlp-sums.txt)
-          echo "$expected  app-resources/linux/yt-dlp/yt-dlp" | sha256sum -c -
-          curl -fsSL https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-linux-amd64 -o app-resources/linux/torrserver/TorrServer
-          test $(stat -c %s app-resources/linux/torrserver/TorrServer) -gt 10000000
-          chmod +x app-resources/linux/yt-dlp/yt-dlp app-resources/linux/torrserver/TorrServer
-          app-resources/linux/yt-dlp/yt-dlp --version
-
       - name: Packaging tools
         run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot rpm
 
-      - name: Tests and packages
-        run: ./gradlew --no-daemon test packageDeb packageRpm createDistributable
+      - name: Tests and app
+        run: |
+          ./gradlew --no-daemon test createReleaseDistributable
+          python3 scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC linux
 
-      - name: Collect files
+      # mpv comes from the system (apt install mpv); the torrent engine and yt-dlp download on first use.
+      - name: Packages
         run: |
           v="${{ steps.version.outputs.version }}"
-          mkdir -p dist
-          cp build/compose/binaries/main/deb/*.deb "dist/CloudStreamPC-$v-amd64.deb"
-          cp build/compose/binaries/main/rpm/*.rpm "dist/CloudStreamPC-$v-x86_64.rpm"
-          tar -C build/compose/binaries/main/app -czf "dist/CloudStreamPC-$v-linux-x64.tar.gz" CloudStreamPC
+          app=build/compose/binaries/main-release/app/CloudStreamPC
+          mkdir -p out dist
+          for type in deb rpm; do
+            jpackage --type $type --app-image $app --name CloudStreamPC --app-version $v --dest out \
+              --vendor CloudStreamPC --description "CloudStream pour ordinateur" --icon icons/icon.png \
+              --linux-package-name cloudstreampc --linux-deb-maintainer cloudstreampc@users.noreply.github.com \
+              --linux-menu-group AudioVideo --linux-app-category AudioVideo --linux-shortcut
+          done
+          cp out/*.deb "dist/CloudStreamPC-$v-amd64.deb"
+          cp out/*.rpm "dist/CloudStreamPC-$v-x86_64.rpm"
+          XZ_OPT="-9 -T0" tar -C "$(dirname $app)" -cJf "dist/CloudStreamPC-$v-linux-x64.tar.xz" CloudStreamPC
           ls -l dist
 
       - uses: actions/upload-artifact@v4
@@ -183,18 +170,6 @@ jobs:
         id: version
         run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      - name: Download yt-dlp and TorrServer
-        run: |
-          mkdir -p app-resources/macos/yt-dlp app-resources/macos/torrserver
-          base=https://github.com/yt-dlp/yt-dlp/releases/latest/download
-          curl -fsSL "$base/yt-dlp_macos" -o app-resources/macos/yt-dlp/yt-dlp
-          curl -fsSL "$base/SHA2-256SUMS" -o yt-dlp-sums.txt
-          expected=$(awk '$2 == "yt-dlp_macos" {print $1}' yt-dlp-sums.txt)
-          echo "$expected  app-resources/macos/yt-dlp/yt-dlp" | shasum -a 256 -c -
-          curl -fsSL https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-darwin-arm64 -o app-resources/macos/torrserver/TorrServer
-          test $(stat -f %z app-resources/macos/torrserver/TorrServer) -gt 10000000
-          chmod +x app-resources/macos/yt-dlp/yt-dlp app-resources/macos/torrserver/TorrServer
-
       - name: Icon
         run: |
           mkdir icon.iconset
@@ -204,14 +179,21 @@ jobs:
           done
           iconutil -c icns icon.iconset -o icons/icon.icns
 
-      - name: Package
-        run: ./gradlew --no-daemon packageDmg
+      - name: App
+        run: |
+          ./gradlew --no-daemon createReleaseDistributable
+          app=build/compose/binaries/main-release/app/CloudStreamPC.app
+          python3 scripts/slim_app.py $app macos
+          # Files changed after jpackage's signature: sign the bundle again (ad hoc, no Apple account).
+          codesign --force --deep --sign - $app
 
-      - name: Collect files
+      - name: Package
         run: |
           v="${{ steps.version.outputs.version }}"
-          mkdir -p dist
-          cp build/compose/binaries/main/dmg/*.dmg "dist/CloudStreamPC-$v-macos-arm64.dmg"
+          mkdir -p out dist
+          jpackage --type dmg --app-image build/compose/binaries/main-release/app/CloudStreamPC.app --name CloudStreamPC \
+            --app-version $v --dest out --vendor CloudStreamPC
+          cp out/*.dmg "dist/CloudStreamPC-$v-macos-arm64.dmg"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
@@ -235,6 +217,12 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # Download size watch: each file against the same file of the previous release.
+      - name: Sizes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/size_check.py dist "${{ steps.version.outputs.version }}" "${{ github.repository }}"
+
       # One list of SHA-256 for every file: the app checks its update against it before installing.
       - name: Checksums
         run: |
@@ -257,10 +245,11 @@ jobs:
             Version sans installation : `CloudStreamPC-${{ steps.version.outputs.version }}-portable.zip` (décompressez puis lancez `CloudStreamPC.exe`).
             Si Windows affiche « Windows a protégé votre ordinateur » : « Informations complémentaires » puis « Exécuter quand même ».
 
-            **Linux :** `.deb` (Ubuntu, Debian, Mint…), `.rpm` (Fedora, openSUSE…) ou `linux-x64.tar.gz`. Installez aussi mpv (`sudo apt install mpv`).
+            **Linux :** `.deb` (Ubuntu, Debian, Mint…), `.rpm` (Fedora, openSUSE…) ou `linux-x64.tar.xz`. Installez aussi mpv (`sudo apt install mpv`).
 
             **macOS (Apple Silicon) :** ouvrez le `.dmg` et glissez CloudStreamPC dans Applications. Installez mpv (`brew install mpv`).
             L'application n'étant pas notariée, au premier lancement : clic droit sur l'application → Ouvrir.
 
             Les versions suivantes s'installent depuis l'application (Paramètres → Mises à jour et Sauvegarde).
+            Le moteur torrent et le lecteur de bandes-annonces se téléchargent la première fois qu'on s'en sert.
             Les empreintes SHA-256 des fichiers sont dans `SHA256SUMS.txt`.
