@@ -12,6 +12,9 @@ import com.lagradost.cloudstream3.TvSeriesLoadResponse
 
 /** Builds the list of things to play from a details page, and picks where to start. */
 object PlayQueue {
+    /** Prefix of the playable data of torrent pages: played directly, without `loadLinks`. */
+    const val TORRENT_DATA = "cspc-torrent:"
+
     /** Episodes grouped by dub status (animes); series have a single `null` group. */
     fun episodesByDub(response: LoadResponse): Map<DubStatus?, List<Episode>> = when (response) {
         is TvSeriesLoadResponse -> mapOf(null to response.episodes)
@@ -28,6 +31,9 @@ object PlayQueue {
     fun build(response: LoadResponse, episodes: List<Episode>): List<Playable> = when (response) {
         is MovieLoadResponse -> listOf(Playable(response.dataUrl, null, response.name))
         is LiveStreamLoadResponse -> listOf(Playable(response.dataUrl, null, response.name))
+        // Torrent pages of extensions: the magnet (or .torrent link) is what plays.
+        is com.lagradost.cloudstream3.TorrentLoadResponse ->
+            listOfNotNull((response.magnet ?: response.torrent)?.let { Playable(TORRENT_DATA + it, null, response.name) })
         else -> episodes.mapIndexed { index, ep ->
             Playable(ep.data, episodeLabel(ep, index), response.name, ep.season, ep.episode ?: (index + 1))
         }

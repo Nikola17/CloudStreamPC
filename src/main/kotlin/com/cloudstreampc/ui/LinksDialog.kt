@@ -99,10 +99,10 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
         }
         // Subtitles often arrive with the last links: give them a moment.
         if (!loading) delay(300)
-        PlaybackManager.bestLink(links, request.failedSources)?.let { play(it) }
+        PlaybackManager.bestLink(links, request.failedSources, PlaybackManager.rememberedSource(request))?.let { play(it) }
     }
 
-    val best = PlaybackManager.bestLink(links, request.failedSources)
+    val best = PlaybackManager.bestLink(links, request.failedSources, PlaybackManager.rememberedSource(request))
     val sorted = links.sortedWith(compareByDescending<ExtractorLink> { it == best }.thenByDescending { it.quality }.thenBy { it.name })
 
     AlertDialog(

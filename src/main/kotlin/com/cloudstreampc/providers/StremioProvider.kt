@@ -283,10 +283,18 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
                 headers = stream.get("behaviorHints")?.get("proxyHeaders")?.get("request")?.fields()?.asSequence()
                     ?.associate { it.key to it.value.asText() }.orEmpty()
             })
-            // Torrents need a torrent engine: listed but not playable (like the app without a torrent server).
-            infoHash != null -> callback(newExtractorLink(addon.name, "$label (torrent)", "magnet:?xt=urn:btih:$infoHash", ExtractorLinkType.MAGNET) {
-                this.quality = quality
-            })
+            // Torrents play through the bundled torrent engine: the magnet carries the trackers and the file index.
+            infoHash != null -> {
+                val trackers = stream.get("sources").items().mapNotNull { it.asText().removePrefix("tracker:").takeIf { t -> "://" in t } }
+                val magnet = buildString {
+                    append("magnet:?xt=urn:btih:").append(infoHash)
+                    trackers.forEach { append("&tr=").append(java.net.URLEncoder.encode(it, Charsets.UTF_8)) }
+                    stream.get("fileIdx")?.takeIf { it.isInt }?.let { append("&cspc_index=").append(it.asInt()) }
+                }
+                callback(newExtractorLink(addon.name, "$label (torrent)", magnet, ExtractorLinkType.MAGNET) {
+                    this.quality = quality
+                })
+            }
         }
     }
 

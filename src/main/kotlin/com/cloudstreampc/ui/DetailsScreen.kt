@@ -178,6 +178,10 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     // Everything playable from this page, in order, so the next episode can follow.
     val queue: List<Playable> = PlayQueue.build(data, episodes)
 
+    var castIndex by remember(data) { mutableStateOf<Int?>(null) }
+    castIndex?.let { index ->
+        if (index in queue.indices) CastDialog(PlayRequest(api, data, queue, index)) { castIndex = null }
+    }
     var trailer by remember(data) { mutableStateOf<String?>(null) }
     LaunchedEffect(data) { trailer = runCatching { com.cloudstreampc.providers.Trailers.youtubeId(data) }.getOrNull() }
 
@@ -277,6 +281,11 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                             }
                             if (mainIndex >= 0) {
                                 FilledTonalButton(onClick = { play(mainIndex, chooseSource = true) }) { Text("Sources") }
+                                FilledTonalButton(onClick = { castIndex = mainIndex }) {
+                                    Icon(AppIcons.Cast, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Caster")
+                                }
                                 if (data !is LiveStreamLoadResponse) {
                                     val existing = DownloadManager.find(data.apiName, queue[mainIndex].data)
                                     FilledTonalButton(onClick = { download(mainIndex) }) {
@@ -313,8 +322,8 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                 Text("Site")
                             }
                         }
-                        if (data is TorrentLoadResponse) {
-                            Text("Les torrents ne sont pas encore pris en charge.", color = CsColors.Error, modifier = Modifier.padding(top = 8.dp))
+                        if (data is TorrentLoadResponse && !com.cloudstreampc.player.TorrentEngine.available) {
+                            Text("Moteur torrent indisponible : activez les torrents dans Paramètres → Lecteur.", color = CsColors.Error, modifier = Modifier.padding(top = 8.dp))
                         }
                         data.plot?.takeIf { it.isNotBlank() }?.let {
                             Text(it, modifier = Modifier.padding(top = 16.dp).widthIn(max = 900.dp), color = Color(0xFFDDDDDD), lineHeight = 22.sp)

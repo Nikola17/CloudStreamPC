@@ -20,7 +20,14 @@ object LinkResolver {
         onSubtitle: (SubtitleFile) -> Unit,
         onLink: (ExtractorLink) -> Unit,
     ) = withContext(Dispatchers.IO) {
-        request.api.loadLinks(request.playable.data, false, onSubtitle, onLink)
+        val data = request.playable.data
+        if (data.startsWith(PlayQueue.TORRENT_DATA)) {
+            val torrent = data.removePrefix(PlayQueue.TORRENT_DATA)
+            val type = if (torrent.startsWith("magnet:")) com.lagradost.cloudstream3.utils.ExtractorLinkType.MAGNET else com.lagradost.cloudstream3.utils.ExtractorLinkType.TORRENT
+            onLink(com.lagradost.cloudstream3.utils.newExtractorLink(request.api.name, "Torrent", torrent, type))
+            return@withContext true
+        }
+        request.api.loadLinks(data, false, onSubtitle, onLink)
     }
 
     /**

@@ -87,6 +87,23 @@ connexion indique quoi remplir, puis la connexion se fait dans le navigateur ou 
 ordinateurs ; favoris, historique, progression et goûts de chaque profil y sont fusionnés automatiquement (ajouts
 et suppressions des deux côtés).
 
+**Torrents** : les liens magnet des extensions et des addons Stremio (Torrentio…) se lisent avec le moteur
+[TorrServer](https://github.com/YouROK/TorrServer) inclus : la vidéo démarre pendant le téléchargement, et le bon
+épisode est choisi dans les torrents de saison complète. Les sources directes restent prioritaires.
+Au premier torrent, Windows peut demander d'autoriser TorrServer sur le réseau (nécessaire pour les pairs).
+
+**Caster** (bouton de la fiche) : envoie la meilleure source à un **Chromecast** ou à une **TV DLNA** du réseau,
+avec pause et arrêt depuis la barre en bas de l'application. L'application relaie la vidéo avec les en-têtes que
+demandent les hébergeurs (et le flux des torrents) ; Windows peut demander d'autoriser CloudStreamPC sur le réseau privé.
+
+**Sous-titres en ligne** : les sous-titres d'OpenSubtitles dans vos langues (Paramètres → Lecteur) sont ajoutés au
+menu des sous-titres du lecteur. Décalage des sous-titres dans mpv : `z` / `x`.
+
+**Mémoire de la source** : la source qui a fonctionné pour un titre est relancée en premier la fois suivante.
+
+**Discord** (Paramètres → Général) : affiche le titre et l'épisode en cours sur votre profil Discord ; il faut
+l'identifiant d'une application Discord créée une fois sur le portail développeur.
+
 **Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche.
 
 **Téléchargements** : vidéos directes et flux HLS (y compris chiffrés AES-128), pause / reprise,
@@ -140,7 +157,9 @@ de signature avec un certificat jetable (sans publier de version).
 
 ## Limites connues
 
-- Les flux **torrent** (certaines extensions, addons Stremio comme Torrentio) ne sont pas lisibles.
+- Les torrents dépendent des pairs disponibles ; certains réseaux (entreprise, école) bloquent BitTorrent.
+- La diffusion vers une TV DLNA dépend des formats que la TV accepte (les flux HLS sont mieux pris en charge par
+  Chromecast).
 - Les comptes AniList, MyAnimeList, Simkl et Trakt nécessitent un identifiant d'application que chaque
   utilisateur crée une fois sur le service (CloudStreamPC n'a pas de compte développeur commun).
 - Les extensions qui utilisent des fonctions propres à Android (réglages internes, ressources) peuvent
@@ -169,7 +188,8 @@ de signature avec un certificat jetable (sans publier de version).
 ## Composants inclus
 
 [mpv](https://mpv.io) (GPL), [uosc](https://github.com/tomasklaen/uosc) 5.9.2 (LGPL-2.1, non modifié),
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), polices Outfit et Inter (SIL OFL), bibliothèque
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
+[JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), polices Outfit et Inter (SIL OFL), bibliothèque
 CloudStream (GPL-3.0).
 
 ## Compiler soi-même

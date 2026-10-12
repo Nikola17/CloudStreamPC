@@ -137,6 +137,7 @@ object FolderSync {
             progress = progress,
             searchHistory = (local.searchHistory + remote.searchHistory).distinctBy { it.lowercase() }.take(30),
             episodeSnapshots = snapshots,
+            preferredSources = remote.preferredSources + local.preferredSources,
             modifiedAt = maxOf(local.modifiedAt, remote.modifiedAt),
         )
     }

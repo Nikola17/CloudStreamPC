@@ -16,6 +16,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Something that can be played: a movie, an episode or a live channel. */
@@ -69,6 +70,9 @@ object PlaybackManager {
     /** Episode proposed after the current one ended. */
     var nextUp by mutableStateOf<PlayRequest?>(null)
 
+    /** What is being prepared before the player opens (torrent), shown by the app. */
+    var status by mutableStateOf<String?>(null)
+
     fun request(request: PlayRequest) {
         nextUp = null
         pending = request
@@ -107,8 +111,32 @@ object PlaybackManager {
 
     private fun titleOf(playable: Playable) = listOfNotNull(playable.title, playable.label).joinToString(" · ")
 
-    /** Launches the player for [link] and follows the playback until the player is closed. */
+    /** Launches the player for [link] (after preparing a torrent) and follows the playback until it is closed. */
     fun play(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
+        if (!TorrentEngine.isTorrent(link)) return launch(request, link, subtitles)
+        pending = null
+        status = "Torrent : connexion aux sources…"
+        scope.launch {
+            try {
+                val http = torrentToHttp(link, request.playable)
+                status = null
+                launch(request, http, subtitles)
+            } catch (t: Throwable) {
+                status = null
+                Logger.error("Torrent ${link.name}", t)
+                pending = request.copy(autoPlay = false, chooseManually = true, failedSources = request.failedSources + link.name)
+            }
+        }
+    }
+
+    private suspend fun torrentToHttp(link: ExtractorLink, playable: Playable): ExtractorLink {
+        val url = TorrentEngine.prepare(link, playable)
+        return com.lagradost.cloudstream3.utils.newExtractorLink(link.source, link.name, url, com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO) {
+            quality = link.quality
+        }
+    }
+
+    private fun launch(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
         val settings = Store.settings
         val ipcPath = if (settings.player == PlayerKind.MPV && !request.isLive) MpvIpc.newServerPath() else null
         val process = ExternalPlayer.play(
@@ -120,7 +148,23 @@ object PlaybackManager {
         val session = Session(request, link.name)
         started(request, link.name)
         scope.launch { follow(session, process, ipcPath) }
-        if (ipcPath != null) scope.launch { sendSegments(ipcPath, request) }
+        if (ipcPath != null) {
+            scope.launch { sendSegments(ipcPath, request) }
+            scope.launch { addOnlineSubtitles(session, ipcPath, request) }
+        }
+    }
+
+    /** Adds OpenSubtitles tracks to the player's subtitle menu once the episode plays. */
+    private suspend fun addOnlineSubtitles(session: Session, ipcPath: String, request: PlayRequest) {
+        if (!Store.settings.onlineSubtitles || request.isLive) return
+        val found = OnlineSubtitles.find(request.response, request.playable)
+        if (found.isEmpty()) return
+        // `sub-add` needs the file to be loaded.
+        val deadline = System.currentTimeMillis() + 120_000
+        while (session.request === request && session.position == null && System.currentTimeMillis() < deadline) delay(500)
+        if (session.request !== request || session.position == null) return
+        MpvIpc.send(ipcPath, *found.map { listOf("sub-add", it.url, "auto", it.title, it.lang) }.toTypedArray())
+        Logger.info("${found.size} sous-titres en ligne ajoutés")
     }
 
     private fun started(request: PlayRequest, sourceName: String) {
@@ -131,6 +175,7 @@ object PlaybackManager {
         }
         nowPlaying = NowPlaying(request, sourceName)
         com.cloudstreampc.core.EpisodeWatcher.seen(request.response.apiName, request.response.url)
+        DiscordPresence.watching(request)
     }
 
     /** Gives the player script the parts it can skip (opening, recap, credits). */
@@ -183,6 +228,7 @@ object PlaybackManager {
         val request = session.request
         runCatching { com.cloudstreampc.core.Taste.recordOutcome(request.response, session.position, session.duration) }
         if (nowPlaying?.request === request) nowPlaying = null
+        DiscordPresence.clear()
 
         // mpv gave up right away (dead link, 403...): offer the other sources again.
         val quickFailure = System.currentTimeMillis() - session.itemStartedAt < 15_000 && session.position == null
@@ -192,6 +238,8 @@ object PlaybackManager {
             return
         }
 
+        // It played for a while: try this source first next time for this title.
+        if ((session.position ?: 0.0) > 60) rememberSource(request, session.sourceName)
         val finished = Store.isWatched(request.api.name, request.playable.data)
         Logger.info("Lecteur fermé (position ${session.position?.toInt()} s / ${session.duration?.toInt()} s, terminé : $finished)")
         if (finished && Store.settings.autoPlayNextEpisode) {
@@ -218,7 +266,12 @@ object PlaybackManager {
         Logger.info("Épisode suivant dans le lecteur : ${next.playable.label}")
 
         val resolved = LinkResolver.resolve(next)
-        val link = bestLink(resolved.links)
+        val best = bestLink(resolved.links, remembered = rememberedSource(next))
+        val link = if (best != null && TorrentEngine.isTorrent(best)) {
+            runCatching { torrentToHttp(best, next.playable) }.onFailure { Logger.error("Torrent ${best.name}", it) }.getOrNull()
+        } else {
+            best
+        }
         if (link == null) {
             MpvIpc.toScript(ipcPath, "next-failed", "Aucune source trouvée pour l'épisode suivant")
             pending = next.copy(autoPlay = false, chooseManually = true)
@@ -256,18 +309,39 @@ object PlaybackManager {
         started(next, link.name)
         val info = mapOf("has_next" to (next.next != null), "label" to (next.playable.label ?: next.playable.title))
         MpvIpc.toScript(ipcPath, "episode", com.cloudstreampc.core.compactJson(info))
+        scope.launch { addOnlineSubtitles(session, ipcPath, next) }
         sendSegments(ipcPath, next)
     }
 
     /** Picks the source to play automatically, respecting the preferred quality. */
-    fun bestLink(links: List<ExtractorLink>, failedSources: List<String> = emptyList()): ExtractorLink? {
-        val playable = links.filter { ExternalPlayer.isPlayable(it) && it.name !in failedSources }
+    fun bestLink(
+        links: List<ExtractorLink>,
+        failedSources: List<String> = emptyList(),
+        /** Source that worked last time for this title: played first when it is there. */
+        remembered: String? = null,
+    ): ExtractorLink? {
+        val all = links.filter { ExternalPlayer.isPlayable(it) && it.name !in failedSources }
+        // Torrents start slower: only when there is nothing else.
+        val playable = all.filterNot(TorrentEngine::isTorrent).ifEmpty { all }
         if (playable.isEmpty()) return null
         // Unknown quality is usually an adaptive (multi-quality) HLS playlist: rank it just under 720p.
         fun rank(link: ExtractorLink) =
             if (link.quality == Qualities.Unknown.value || link.quality <= 0) 719 else link.quality
         val limit = Store.settings.preferredQuality
-        val withinLimit = playable.filter { limit == null || rank(it) <= limit }
-        return withinLimit.maxByOrNull(::rank) ?: playable.minByOrNull(::rank)
+        fun pick(candidates: List<ExtractorLink>): ExtractorLink? {
+            val withinLimit = candidates.filter { limit == null || rank(it) <= limit }
+            return withinLimit.maxByOrNull(::rank) ?: candidates.minByOrNull(::rank)
+        }
+        remembered?.let { name -> pick(playable.filter { it.name == name })?.let { return it } }
+        return pick(playable)
+    }
+
+    fun rememberedSource(request: PlayRequest): String? =
+        Store.library.preferredSources["${request.response.apiName}|${request.response.url}"]
+
+    private fun rememberSource(request: PlayRequest, sourceName: String) {
+        val key = "${request.response.apiName}|${request.response.url}"
+        if (Store.library.preferredSources[key] == sourceName) return
+        Store.updateLibrary { lib -> lib.copy(preferredSources = (lib.preferredSources + (key to sourceName)).entries.toList().takeLast(500).associate { it.key to it.value }) }
     }
 }

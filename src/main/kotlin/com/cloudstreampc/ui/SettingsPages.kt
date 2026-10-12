@@ -81,6 +81,24 @@ fun GeneralSettings() {
         Store.updateSettings { it.copy(newEpisodeNotifications = v) }
     }
 
+    SettingsCategory("Discord")
+    SettingsSwitch(
+        "Afficher ce que je regarde sur Discord",
+        "Titre et épisode en cours sur votre profil Discord (l'application Discord doit être ouverte)",
+        s.discordPresence,
+    ) { v -> Store.updateSettings { it.copy(discordPresence = v) } }
+    if (s.discordPresence) {
+        SettingsText(
+            "Identifiant d'application Discord",
+            s.discordAppId,
+            placeholder = "À créer une fois",
+            subtitle = s.discordAppId.ifBlank {
+                "Sur discord.com/developers/applications : « New Application » nommée CloudStreamPC, puis copiez l'« Application ID »"
+            },
+        ) { v -> Store.updateSettings { it.copy(discordAppId = v.trim()) } }
+        SettingsItem("Ouvrir le portail développeur de Discord") { openInBrowser("https://discord.com/developers/applications") }
+    }
+
     SettingsCategory("Contournement FAI")
     SettingsChoice("DNS over HTTPS", Network.providers.map { it.id to it.label }, s.dns) { v ->
         Store.updateSettings { it.copy(dns = v) }
@@ -154,7 +172,21 @@ fun PlayerSettings() {
         Store.updateSettings { it.copy(skip85Button = v) }
     }
 
+    SettingsCategory("Torrents")
+    val torrentEngine = com.cloudstreampc.player.TorrentEngine.executable()
+    SettingsSwitch(
+        "Lire les torrents",
+        if (torrentEngine != null) "Liens magnet des extensions et des addons Stremio (Torrentio…), avec le moteur intégré"
+        else "Moteur torrent (TorrServer) introuvable",
+        s.torrentsEnabled,
+    ) { v -> Store.updateSettings { it.copy(torrentsEnabled = v) } }
+
     SettingsCategory("Sous-titres et audio")
+    SettingsSwitch(
+        "Sous-titres en ligne",
+        "Ajoute les sous-titres d'OpenSubtitles (langues ci-dessous) au menu du lecteur",
+        s.onlineSubtitles,
+    ) { v -> Store.updateSettings { it.copy(onlineSubtitles = v) } }
     SettingsChoice("Taille des sous-titres", listOf(42 to "Petite", 55 to "Normale", 68 to "Grande", 82 to "Très grande"), s.subtitleSize) { v ->
         Store.updateSettings { it.copy(subtitleSize = v) }
     }

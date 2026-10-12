@@ -72,6 +72,14 @@ jobs:
           if ($expected -ne $actual) { throw "Somme de contrôle de yt-dlp.exe invalide" }
           app-resources/windows/yt-dlp/yt-dlp.exe --version
 
+      # Torrent engine (GPL-3.0), pinned version.
+      - name: Download TorrServer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force app-resources/windows/torrserver | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-windows-amd64.exe" -OutFile app-resources/windows/torrserver/TorrServer.exe
+          if ((Get-Item app-resources/windows/torrserver/TorrServer.exe).Length -lt 10MB) { throw "TorrServer.exe incomplet" }
+
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
       - name: Test mpv IPC on Windows
         run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"

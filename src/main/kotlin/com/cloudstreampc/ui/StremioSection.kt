@@ -79,7 +79,7 @@ fun StremioAddonsSection() {
     Column(Modifier.padding(horizontal = 24.dp)) {
         Text(
             "Les addons Stremio ajoutent des catalogues (accueil, recherche), des fiches et des flux. Collez le lien du " +
-                "manifest (…/manifest.json ou stremio://…). Les flux torrent ne sont pas lisibles.",
+                "manifest (…/manifest.json ou stremio://…). Les flux torrent passent par le moteur torrent intégré.",
             color = CsColors.TextMuted, fontSize = 13.sp,
         )
         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {

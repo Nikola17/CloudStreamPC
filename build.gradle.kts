@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "2.3.0"
+version = "2.4.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -41,6 +41,8 @@ dependencies {
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
     implementation("org.jsoup:jsoup:1.22.1")
+    // mDNS discovery of Chromecasts (the cast protocol itself is in cast/Chromecast.kt).
+    implementation("org.jmdns:jmdns:3.6.4")
 
     // Extensions (.cs3) ship Android DEX bytecode: converted to JVM classes at install time.
     implementation("de.femtopedia.dex2jar:dex-translator:2.4.38")

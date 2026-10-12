@@ -48,6 +48,18 @@ fun PlaybackOverlays(modifier: Modifier = Modifier) {
         NextEpisodeDialog(next)
     }
     PlaybackManager.nowPlaying?.let { NowPlayingBar(it, modifier) }
+    CastBar(modifier)
+    PlaybackManager.status?.let { message ->
+        Row(
+            modifier.padding(16.dp).clip(RoundedCornerShape(12.dp)).background(CsColors.SurfaceHigh)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(message, fontWeight = FontWeight.Medium)
+        }
+    }
 }
 
 @Composable

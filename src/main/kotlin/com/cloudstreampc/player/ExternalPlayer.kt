@@ -21,8 +21,7 @@ object ExternalPlayer {
         }
     )
 
-    fun isPlayable(link: ExtractorLink) =
-        link.type != ExtractorLinkType.TORRENT && link.type != ExtractorLinkType.MAGNET
+    fun isPlayable(link: ExtractorLink) = !TorrentEngine.isTorrent(link) || TorrentEngine.available
 
     /**
      * Starts the player.

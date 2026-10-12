@@ -98,6 +98,13 @@ data class Settings(
     val autoSkipIntro: Boolean = false,
     /** "+85 s" button in the player controls, like CloudStream. */
     val skip85Button: Boolean = true,
+    /** Magnet / torrent sources played through the bundled torrent engine. */
+    val torrentsEnabled: Boolean = true,
+    /** Subtitles looked up online (OpenSubtitles) and added to the player's list. */
+    val onlineSubtitles: Boolean = true,
+    /** Discord shows what is being watched ("Rich Presence"), with the user's Discord application id. */
+    val discordPresence: Boolean = false,
+    val discordAppId: String = "",
 
     // Fournisseurs
     /** Languages of the extensions to show; empty shows all. */
@@ -204,6 +211,8 @@ data class UserLibrary(
     val favoriteRemoved: Map<String, Long> = emptyMap(),
     /** History entries removed by hand, so a synced PC doesn't bring them back. */
     val historyRemoved: Map<String, Long> = emptyMap(),
+    /** Source that played last for a title ("apiName|url" -> source name), tried first next time. */
+    val preferredSources: Map<String, String> = emptyMap(),
     /** Last change of this library, for the sync folder. */
     val modifiedAt: Long = 0,
 )
