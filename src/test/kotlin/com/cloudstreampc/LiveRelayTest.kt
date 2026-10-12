@@ -71,6 +71,8 @@ class LiveRelayTest {
                         exchange.responseBody.flush()
                         Thread.sleep(30_000)
                     }
+                    // The provider still counts a previous connection.
+                    path == "/busy.ts" -> exchange.sendResponseHeaders(458, -1)
                     path == "/good.ts" -> {
                         exchange.sendResponseHeaders(200, 0)
                         val out = exchange.responseBody
@@ -144,12 +146,51 @@ class LiveRelayTest {
     private fun assertCleanTs(data: ByteArray): List<Pair<Int, Int>> {
         assertTrue(data.size >= 188, "trop peu de données : ${data.size}")
         val usable = data.size - data.size % 188
-        return (0 until usable step 188).map { offset ->
+        return (0 until usable step 188).mapNotNull { offset ->
             assertEquals(0x47.toByte(), data[offset], "paquet désaligné à $offset")
+            // Null packets (PID 0x1FFF) keep the player's connection alive while the relay reconnects.
+            if (data[offset + 1] == 0x1F.toByte() && data[offset + 2] == 0xFF.toByte()) return@mapNotNull null
             for (i in 6 until 188) assertEquals((i and 0x3F).toByte(), data[offset + i], "paquet abîmé à $offset")
             val counter = (0 until 4).fold(0) { acc, i -> (acc shl 8) or (data[offset + 2 + i].toInt() and 0xFF) }
             data[offset + 1].toInt() to counter
         }
+    }
+
+    /** A packet whose adaptation field carries the program clock [pcr] (90 kHz). */
+    private fun pcrPacket(pcr: Long) = ByteArray(188).also {
+        it[0] = 0x47; it[1] = 0x01; it[2] = 0x00; it[3] = 0x30
+        it[4] = 7; it[5] = 0x10
+        it[6] = (pcr shr 25).toByte(); it[7] = (pcr shr 17).toByte(); it[8] = (pcr shr 9).toByte()
+        it[9] = (pcr shr 1).toByte(); it[10] = ((pcr and 1) shl 7).toByte()
+    }
+
+    @Test
+    fun skipsWhatThePlayerAlreadyHasAfterAReconnection() {
+        val out = ByteArrayOutputStream()
+        val aligner = LiveRelay.TsAligner(out)
+        fun send(range: IntProgression) = range.forEach { aligner.write(pcrPacket(it * 3600L), 188) }
+        send(1..100)
+        aligner.reset()
+        // The new connection starts with a burst of the last 30 packets already passed on.
+        send(71..150)
+        val clocks = out.toByteArray().toList().chunked(188).map { LiveRelay.TsAligner.pcrOf(it.toByteArray(), 0) / 3600 }
+        assertEquals((1L..150L).toList(), clocks)
+        assertEquals(30L * 188, aligner.duplicateBytes)
+
+        // A backup source with its own clock is passed on as it comes.
+        aligner.reset()
+        send(5_000_000..5_000_010)
+        assertEquals(161, out.size() / 188)
+    }
+
+    @Test
+    fun busyProviderGoesStraightToTheFreeBackup() {
+        val url = LiveRelay.open(listOf(LiveSource("$base/busy.ts", label = "occupé"), LiveSource("$base/good.ts", label = "libre")))
+        val start = System.currentTimeMillis()
+        val data = read(url, 3_000, 188 * 2000)
+        assertTrue(data.size >= 188 * 2000, "pas de données : ${data.size}")
+        assertTrue(System.currentTimeMillis() - start < 2_000, "trop lent")
+        assertEquals("libre", LiveRelay.currentSource?.label)
     }
 
     @Test

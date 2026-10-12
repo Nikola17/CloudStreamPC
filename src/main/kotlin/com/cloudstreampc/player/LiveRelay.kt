@@ -35,8 +35,15 @@ data class LiveSource(val url: String, val headers: Map<String, String> = emptyM
  * switching between a `.ts` and a `.m3u8` source is invisible too.
  */
 object LiveRelay {
-    /** No byte for this long: the provider's stream is stuck, reconnect. */
+    /** No byte for this long: the provider's stream is stuck, reconnect (upper bound, see [minStallMs]). */
     internal var stallTimeoutMs = 6_000L
+    /**
+     * A steady stream is declared stuck much sooner: after 2.5 times the longest pause seen between
+     * its packets, at least this long. Bursty providers (data every 2 s) get more time automatically.
+     */
+    internal var minStallMs = 2_500L
+    /** "Too many connections" after a drop: the provider frees our previous connection within seconds. */
+    internal var busyRetryMs = 1_500L
     /** Pauses between reconnections that brought nothing, growing then capped. */
     internal var backoffMs = listOf(300L, 1_000L, 2_000L, 4_000L)
     /** Failed attempts in a row on one source before trying the next. */
@@ -54,14 +61,30 @@ object LiveRelay {
     private class Session(val id: String, val sources: List<LiveSource>) {
         @Volatile var closed = false
         @Volatile var upstream: Response? = null
+        @Volatile var upstreamOwner: Reader? = null
         val reconnects = AtomicInteger()
         @Volatile var sourceIndex = 0
+        /** Until when each source answered "busy" (the provider still counts our previous connection). */
+        val busyUntil = LongArray(sources.size)
+        /** The player connection being fed; a new one (the player reconnected) retires the old. */
+        @Volatile var reader: Reader? = null
+        /** Stall watch of the stream being copied: last data, and how long a silence may last. */
+        @Volatile var reading = false
+        @Volatile var lastReadAt = 0L
+        @Volatile var stallLimitMs = 0L
 
         fun close() {
             closed = true
             runCatching { upstream?.close() }
         }
     }
+
+    private class Reader(val aligner: TsAligner) {
+        @Volatile var stale = false
+    }
+
+    /** The reader the current thread feeds (checked before each provider request). */
+    private val threadReader = ThreadLocal<Reader?>()
 
     private class NotRelayable(message: String) : IOException(message)
 
@@ -79,6 +102,24 @@ object LiveRelay {
     /** Times the current channel had to reconnect, and the source it is on (for tests and the logs). */
     val reconnects: Int get() = current?.reconnects?.get() ?: 0
     val currentSource: LiveSource? get() = current?.let { it.sources.getOrNull(it.sourceIndex) }
+
+    /** Closes a provider stream that went silent for longer than its own rhythm allows. */
+    private val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { Thread(it, "live-watchdog").apply { isDaemon = true } }.apply {
+        scheduleWithFixedDelay({
+            val session = current ?: return@scheduleWithFixedDelay
+            // Between two provider connections, empty packets keep the player's connection alive:
+            // it plays from its buffer and never drops the relay (a dropped player connection is
+            // slower to come back, and briefly doubled the provider connections).
+            session.reader?.takeIf { !it.stale && !session.closed }?.let { runCatching { it.aligner.keepAlive(1_000) } }
+            if (!session.reading || session.closed) return@scheduleWithFixedDelay
+            val silent = System.currentTimeMillis() - session.lastReadAt
+            if (silent > session.stallLimitMs) {
+                Logger.info("Direct : flux figé depuis ${silent} ms, reconnexion")
+                session.reading = false
+                runCatching { session.upstream?.close() }
+            }
+        }, 200, 200, TimeUnit.MILLISECONDS)
+    }
 
     private val baseClient: OkHttpClient by lazy {
         app.baseClient.newBuilder().connectTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(true).cache(null).build()
@@ -137,19 +178,33 @@ object LiveRelay {
             return
         }
         exchange.sendResponseHeaders(200, 0)
-        exchange.responseBody.use { out -> relay(session, out) }
+        exchange.responseBody.use { out ->
+            val reader = Reader(TsAligner(out))
+            session.reader?.let { old ->
+                old.stale = true
+                runCatching { session.upstream?.close() }
+            }
+            session.reader = reader
+            threadReader.set(reader)
+            try {
+                relay(session, reader)
+            } finally {
+                threadReader.remove()
+                if (session.reader === reader) session.reader = null
+            }
+        }
     }
 
     /** Feeds the player until it disconnects or the channel is closed. */
-    private fun relay(session: Session, out: OutputStream) {
-        val aligner = TsAligner(out)
+    private fun relay(session: Session, reader: Reader) {
+        val aligner = reader.aligner
         var failures = 0
         var lastData = System.currentTimeMillis()
         val dead = mutableSetOf<Int>()
         val sessionStart = System.currentTimeMillis()
         // Changing channel: give the provider a moment to see the previous connection close.
         sleepUnlessClosed(session, 300 - (sessionStart - lastClose))
-        while (!session.closed) {
+        while (!session.closed && !reader.stale) {
             val index = session.sourceIndex
             val source = session.sources[index]
             val before = aligner.written
@@ -165,12 +220,22 @@ object LiveRelay {
                 dead += index
             } catch (e: Busy) {
                 if (session.closed) return
-                // Right after changing channel, wait for the provider to free the previous connection.
-                if (System.currentTimeMillis() - sessionStart < 12_000) {
-                    Logger.info("Direct : ${source.label} occupé (${e.message}), nouvel essai")
-                    session.upstream?.let { runCatching { it.close() } }
-                    session.upstream = null
-                    sleepUnlessClosed(session, 1_000)
+                // The provider still counts our previous connection (after a drop or a channel change):
+                // another free source right away, otherwise this one again in a moment. Not a failure.
+                closeOwnUpstream(session)
+                val now = System.currentTimeMillis()
+                session.busyUntil[index] = now + busyRetryMs
+                if (now - lastData < giveUpAfterMs) {
+                    val free = (1..session.sources.size).map { (index + it) % session.sources.size }
+                        .firstOrNull { it !in dead && it != index && session.busyUntil[it] <= now }
+                    if (free != null) {
+                        Logger.info("Direct : ${source.label} occupé (${e.message}), essai de ${session.sources[free].label}")
+                        session.sourceIndex = free
+                    } else {
+                        val wait = (session.busyUntil.filterIndexed { i, _ -> i !in dead }.minOrNull() ?: now) - now
+                        Logger.info("Direct : ${source.label} occupé (${e.message}), nouvel essai")
+                        sleepUnlessClosed(session, wait.coerceIn(300, busyRetryMs))
+                    }
                     continue
                 }
                 Logger.info("Direct : coupure de ${source.label} (${e.message})")
@@ -178,8 +243,7 @@ object LiveRelay {
                 if (session.closed) return
                 Logger.info("Direct : coupure de ${source.label} (${e.javaClass.simpleName}: ${e.message})")
             } finally {
-                session.upstream?.let { runCatching { it.close() } }
-                session.upstream = null
+                closeOwnUpstream(session)
             }
             if (session.closed) return
             aligner.reset()
@@ -211,13 +275,22 @@ object LiveRelay {
         }
     }
 
+    /** Closes the provider connection of this thread's reader (not the one of a newer reader). */
+    private fun closeOwnUpstream(session: Session) {
+        val mine = threadReader.get()
+        if (mine == null || session.upstreamOwner === mine) {
+            session.upstream?.let { runCatching { it.close() } }
+            session.upstream = null
+        }
+    }
+
     private fun sleepUnlessClosed(session: Session, ms: Long) {
         val end = System.currentTimeMillis() + ms
-        while (!session.closed && System.currentTimeMillis() < end) Thread.sleep(50)
+        while (!session.closed && threadReader.get()?.stale != true && System.currentTimeMillis() < end) Thread.sleep(50)
     }
 
     private fun get(session: Session, url: String, headers: Map<String, String>): Response {
-        if (session.closed) throw ClientGone()
+        if (session.closed || threadReader.get()?.stale == true) throw ClientGone()
         val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         maxOpenConnections.accumulateAndGet(openConnections.incrementAndGet()) { a, b -> maxOf(a, b) }
         val response = try {
@@ -260,6 +333,7 @@ object LiveRelay {
     private fun pump(session: Session, source: LiveSource, aligner: TsAligner) {
         val response = get(session, source.url, source.headers)
         session.upstream = response
+        session.upstreamOwner = threadReader.get()
         val input = response.body.byteStream()
         val head = ByteArray(1024)
         val n = input.readNBytes(head, 0, head.size)
@@ -282,10 +356,26 @@ object LiveRelay {
 
     private fun copy(session: Session, input: InputStream, aligner: TsAligner) {
         val buffer = ByteArray(64 * 1024)
-        while (!session.closed) {
-            val n = input.read(buffer)
-            if (n < 0) return
-            if (n > 0) aligner.write(buffer, n)
+        val started = System.currentTimeMillis()
+        var longestGap = 0L
+        session.lastReadAt = started
+        session.stallLimitMs = stallTimeoutMs
+        session.reading = true
+        try {
+            while (!session.closed) {
+                val n = input.read(buffer)
+                if (n < 0) return
+                val now = System.currentTimeMillis()
+                // The provider's own rhythm, once its connection burst is over.
+                if (now - started > 3_000) {
+                    longestGap = maxOf(longestGap, now - session.lastReadAt)
+                    session.stallLimitMs = (longestGap * 5 / 2).coerceIn(minOf(minStallMs, stallTimeoutMs), stallTimeoutMs)
+                }
+                session.lastReadAt = now
+                if (n > 0) aligner.write(buffer, n)
+            }
+        } finally {
+            session.reading = false
         }
     }
 
@@ -313,7 +403,7 @@ object LiveRelay {
                 val bytes = fetchSegment(session, segment, source.headers, keys) ?: continue
                 if (!TsAligner.looksLikeTs(bytes, bytes.size)) throw NotRelayable("segments non MPEG-TS")
                 aligner.write(bytes, bytes.size)
-                aligner.reset()
+                aligner.dropPartial()
                 lastSequence = segment.sequence
                 lastProgress = System.currentTimeMillis()
             }
@@ -405,24 +495,115 @@ object LiveRelay {
             }
         }
 
-        /** The connection dropped: whatever packet was half received is dropped with it. */
-        fun reset() {
+        /** End of an HLS segment: a packet it left unfinished is not completed by the next one. */
+        fun dropPartial() {
             pendingSize = 0
         }
 
+        /** The connection dropped: whatever packet was half received is dropped with it. */
+        fun reset() {
+            pendingSize = 0
+            // Providers start a new connection with the last seconds they sent: skip what the player
+            // already has, otherwise the picture jumps back a few seconds after every reconnection.
+            if (lastPcr >= 0) {
+                skipUntilPcr = lastPcr
+                skippedBytes = 0
+            }
+        }
+
+        /** Program clock (90 kHz) of the last packet passed on, and its stream; -1 when unknown. */
+        private var lastPcr = -1L
+        private var pcrPid = -1
+        private var skipUntilPcr = -1L
+        private var skippedBytes = 0L
+        /** Packets dropped because the player already had them (tests and logs). */
+        var duplicateBytes = 0L
+            private set
+
         private fun emit(bytes: ByteArray, offset: Int, length: Int) {
-            try {
-                out.write(bytes, offset, length)
-                out.flush()
-            } catch (e: IOException) {
-                throw ClientGone()
+            var runStart = offset
+            var i = offset
+            val end = offset + length
+            while (i < end) {
+                val pcr = pcrOf(bytes, i)
+                if (skipUntilPcr >= 0) {
+                    val pid = pidOf(bytes, i)
+                    val resume = when {
+                        pcr < 0 || (pcrPid >= 0 && pid != pcrPid) -> false
+                        else -> {
+                            val ahead = (pcr - skipUntilPcr).mod(PCR_WRAP)
+                            // Newer than what was sent, or another clock altogether (backup source): go on.
+                            ahead in 1 until MAX_JUMP || ahead >= MAX_JUMP && PCR_WRAP - ahead >= MAX_JUMP
+                        }
+                    }
+                    if (resume || skippedBytes > MAX_SKIP) {
+                        skipUntilPcr = -1
+                        runStart = i
+                    } else {
+                        skippedBytes += PACKET
+                        duplicateBytes += PACKET
+                        i += PACKET
+                        runStart = i
+                        continue
+                    }
+                }
+                if (pcr >= 0) {
+                    lastPcr = pcr
+                    pcrPid = pidOf(bytes, i)
+                }
+                i += PACKET
+            }
+            if (end > runStart) send(bytes, runStart, end - runStart)
+        }
+
+        @Volatile private var lastSent = System.currentTimeMillis()
+
+        private fun send(bytes: ByteArray, offset: Int, length: Int) {
+            synchronized(out) {
+                try {
+                    out.write(bytes, offset, length)
+                    out.flush()
+                } catch (e: IOException) {
+                    throw ClientGone()
+                }
+                lastSent = System.currentTimeMillis()
             }
             written += length
+        }
+
+        /** An MPEG-TS null packet (ignored by players) when nothing was sent for [idleMs]. */
+        fun keepAlive(idleMs: Long) {
+            if (System.currentTimeMillis() - lastSent < idleMs) return
+            synchronized(out) {
+                try {
+                    out.write(NULL_PACKET)
+                    out.flush()
+                } catch (_: IOException) {
+                }
+                lastSent = System.currentTimeMillis()
+            }
         }
 
         companion object {
             const val PACKET = 188
             const val SYNC: Byte = 0x47
+            private val NULL_PACKET = ByteArray(PACKET) { 0xFF.toByte() }.also { it[0] = SYNC; it[1] = 0x1F; it[2] = 0xFF.toByte(); it[3] = 0x10 }
+            private const val PCR_WRAP = 1L shl 33
+            /** Clocks further apart than 30 s are not the same broadcast. */
+            private const val MAX_JUMP = 30L * 90_000
+            private const val MAX_SKIP = 32L * 1024 * 1024
+
+            private fun pidOf(b: ByteArray, i: Int) = ((b[i + 1].toInt() and 0x1F) shl 8) or (b[i + 2].toInt() and 0xFF)
+
+            /** PCR base (90 kHz) carried by the packet at [i], or -1. */
+            internal fun pcrOf(b: ByteArray, i: Int): Long {
+                val adaptation = (b[i + 3].toInt() shr 4) and 0x3
+                if (adaptation != 2 && adaptation != 3) return -1
+                val length = b[i + 4].toInt() and 0xFF
+                if (length < 7 || (b[i + 5].toInt() and 0x10) == 0) return -1
+                return ((b[i + 6].toLong() and 0xFF) shl 25) or ((b[i + 7].toLong() and 0xFF) shl 17) or
+                    ((b[i + 8].toLong() and 0xFF) shl 9) or ((b[i + 9].toLong() and 0xFF) shl 1) or ((b[i + 10].toLong() and 0xFF) shr 7)
+            }
 
             private fun findSync(bytes: ByteArray, from: Int, length: Int): Int {
                 for (i in from until length) {
