@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "3.0.0"
+version = "3.0.1"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"

@@ -144,7 +144,17 @@ du fournisseur coupe, se fige ou renvoie une erreur, le relais se reconnecte en 
 recolle le flux ; le lecteur garde quelques secondes d'avance (réglage « Tampon du direct » : 3, 8 ou 20 s)
 et l'image continue sans écran noir. Si la chaîne ne revient pas, il passe tout seul sur une source de secours :
 l'autre format du même abonnement (MPEG-TS ou HLS), puis la même chaîne sur vos autres comptes IPTV.
-Essai : avec une coupure du fournisseur toutes les 30 secondes, la lecture ne s'est jamais arrêtée.
+Il retire aussi les secondes que le fournisseur renvoie en double à chaque reconnexion (l'image ne recule
+pas), détecte un flux figé en 2,5 s, passe tout de suite sur une source libre quand le fournisseur dit
+« connexion déjà prise », et garde le lecteur connecté pendant les reconnexions (jamais deux connexions chez
+le fournisseur).
+
+Mesures (10 minutes chacune, relais + mpv) :
+- **vraie chaîne** France 24 en direct (HLS 1080p, Internet) : aucune pause, aucune image figée ;
+- **fournisseur très instable simulé** (coupure toutes les 10 à 40 s, 15 % de flux figés, erreurs 503, place
+  gardée 2 s après chaque coupure, panne de 90 s du compte principal) : une seule image figée de 2 s hors de
+  la panne double des deux comptes, contre 5 pauses (47 s) et 5 images figées avant cette version.
+  Test reproductible : `LiveSoakTest` (`-Dtest.soak=600 -Dtest.soak.sources=…`).
 - **Une seule connexion à la fois** au fournisseur (la plupart des abonnements n'en permettent qu'une) : changer de
   chaîne réutilise la même fenêtre et ferme d'abord l'ancien flux.
 - **Zapping dans le lecteur** : `Page préc.` / `Page suiv.` (ou les gâchettes de la manette) pour la chaîne
