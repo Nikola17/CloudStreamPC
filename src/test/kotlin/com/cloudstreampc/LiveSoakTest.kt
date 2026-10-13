@@ -18,6 +18,7 @@ import kotlin.test.Test
  *
  *   one channel with backups:  -Dtest.soak=600 -Dtest.soak.sources=http://…/a/1.ts,http://…/b/1.ts
  *   several channels in a row: -Dtest.soak=300 "-Dtest.soak.channels=France 24=https://…;;Euronews=https://…"
+ *   (backups of a channel separated by |, like the app's .ts then .m3u8)
  *
  * Reports what the viewer would see: buffering pauses, frozen picture, end of stream, player
  * closing, and how long each zap took.
@@ -50,7 +51,7 @@ class LiveSoakTest {
     fun liveKeepsPlaying() {
         val seconds = System.getProperty("test.soak")?.toIntOrNull() ?: return
         val channels: List<Pair<String, List<String>>> = System.getProperty("test.soak.channels")?.split(";;")
-            ?.filter { '=' in it }?.map { it.substringBefore('=').trim() to listOf(it.substringAfter('=').trim()) }
+            ?.filter { '=' in it }?.map { it.substringBefore('=').trim() to it.substringAfter('=').split('|').map(String::trim).filter(String::isNotEmpty) }
             ?: System.getProperty("test.soak.sources")?.split(',')?.filter { it.isNotBlank() }?.let { listOf("Direct" to it) }
             ?: return
         val mpv = (listOfNotNull(System.getProperty("test.mpv")) + listOf("/usr/bin/mpv", "/usr/local/bin/mpv"))
