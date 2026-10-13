@@ -33,8 +33,12 @@ object LiveTv {
             .distinctBy { it.url }.map { it.toSource() }
             .also { list -> Logger.info("Direct : ${list.size} source(s) : ${list.joinToString { it.label }}") }
         val sameAccount = runCatching { provider.liveLinks(request) }.getOrDefault(emptyList())
+        // The channel's copies on the same account (other quality or category), often on other servers.
+        val copies = runCatching {
+            provider.duplicates(request.response.url).mapNotNull { provider.liveLinks(it).firstOrNull() }
+        }.getOrDefault(emptyList())
         val others = runCatching { otherAccounts(provider, request.response.url) }.getOrDefault(emptyList())
-        return (listOf(chosen) + sameAccount + others).distinctBy { it.url }.map { it.toSource() }
+        return (listOf(chosen) + sameAccount + copies + others).distinctBy { it.url }.map { it.toSource() }
             .also { list -> Logger.info("Direct : ${list.size} source(s) : ${list.joinToString { it.label }}") }
     }
 

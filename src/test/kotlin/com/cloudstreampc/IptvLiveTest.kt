@@ -30,6 +30,10 @@ class IptvLiveTest {
         val key = IptvProvider.channelKey("TF1")
         listOf("FR| TF1 HD", "TF1 FHD", "fr: TF1 (backup)", "TF1 [1080p]", "tf1").forEach { assertEquals(key, IptvProvider.channelKey(it), it) }
         assertEquals(IptvProvider.channelKey("France 2"), IptvProvider.channelKey("FR - FRANCE 2 HD"))
+        // Names as a real provider writes them: copies of the channel match, time-shifted ones don't.
+        val bfm = IptvProvider.channelKey("BFM TV")
+        listOf("|FR| BFM TV ᵁᴴᴰ", "|FR| BFM TV ᴴᴰ", "|FR| BFM TV ˢᴰ").forEach { assertEquals(bfm, IptvProvider.channelKey(it), it) }
+        listOf("BFM TV |-2H|", "|FR| BFM TV +4").forEach { kotlin.test.assertNotEquals(bfm, IptvProvider.channelKey(it), it) }
         assertEquals(IptvProvider.channelKey("Canal+ Sport"), IptvProvider.channelKey("CANAL+ SPORT HEVC"))
         assertNotEquals(IptvProvider.channelKey("France 2"), IptvProvider.channelKey("France 3"))
         assertEquals("teleloisirs", IptvProvider.channelKey("Télé Loisirs"))

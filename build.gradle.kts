@@ -57,7 +57,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     systemProperty("cloudstreampc.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
-    listOf("test.network", "test.search", "test.repo", "test.tasteOut", "test.trailerVideo", "test.mpv", "test.browser", "test.soak", "test.soak.sources", "test.soak.channels", "test.fstv").forEach { key ->
+    listOf("test.network", "test.search", "test.repo", "test.tasteOut", "test.trailerVideo", "test.mpv", "test.browser", "test.soak", "test.soak.sources", "test.soak.channels", "test.soak.buffer", "test.soak.iptv", "test.soak.iptv.ids", "test.fstv").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
     testLogging {

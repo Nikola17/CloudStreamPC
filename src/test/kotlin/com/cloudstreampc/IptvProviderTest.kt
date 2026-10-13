@@ -35,9 +35,23 @@ class IptvProviderTest {
         http://example.test/series/u/p/101.mp4
     """.trimIndent()
 
+    /** A big provider: 30 000 channels (about 6 MB), copies of BFM TV on other servers. */
+    private var bigProvider = false
+
+    private fun bigLiveList(): String = buildString {
+        append("[")
+        append("""{"stream_id":1,"name":"|FR| BFM TV ᵁᴴᴰ","category_id":"1","epg_channel_id":"bfmtv.fr"},""")
+        append("""{"stream_id":2,"name":"|FR| BFM TV ᴴᴰ","category_id":"1","epg_channel_id":"bfmtv.fr"},""")
+        append("""{"stream_id":3,"name":"BFM TV |-2H|","category_id":"1","epg_channel_id":""},""")
+        for (i in 10 until 30_000) {
+            append("""{"num":$i,"stream_id":$i,"name":"|FR| Chaîne numéro $i ᴴᴰ","stream_type":"live","category_id":"1","stream_icon":"http://logo.example.test/very/long/path/$i.png","epg_channel_id":"c$i.fr","added":"1700000000","custom_sid":"","tv_archive":0,"direct_source":"","tv_archive_duration":0},""")
+        }
+        append("""{"stream_id":4,"name":"France 2","category_id":"1"}]""")
+    }
+
     private fun xtream(action: String?): String = when (action) {
         "get_live_categories" -> """[{"category_id":"1","category_name":"France"}]"""
-        "get_live_streams" -> """[{"stream_id":5,"name":"France 2","category_id":"1","stream_icon":"http://logo/f2.png"}]"""
+        "get_live_streams" -> if (bigProvider) bigLiveList() else """[{"stream_id":5,"name":"France 2","category_id":"1","stream_icon":"http://logo/f2.png"}]"""
         "get_vod_categories" -> """[{"category_id":"2","category_name":"Action"}]"""
         "get_vod_streams" -> """[{"stream_id":7,"name":"Un Film","category_id":"2","rating":"7.5","added":"1700000000","container_extension":"mkv"}]"""
         "get_series_categories" -> """[{"category_id":"3","category_name":"Drame"}]"""
@@ -89,6 +103,17 @@ class IptvProviderTest {
 
         val live = assertIs<LiveStreamLoadResponse>(provider.load(provider.search("france 2").single().url))
         assertEquals(2, provider.links(live.dataUrl).size)
+    }
+
+    @Test
+    fun bigProviderListsAndChannelCopies() = runBlocking {
+        bigProvider = true
+        assertTrue(bigLiveList().length > 5_000_000, "plus de 5 Mo, comme un gros fournisseur")
+        val provider = IptvProvider(IptvAccount("big", "Gros", IptvType.XTREAM, base, "user", "pass"))
+        provider.prepare()
+        val bfm = provider.search("bfm tv").first { it.name == "|FR| BFM TV ᵁᴴᴰ" }
+        // The other quality of the channel is a backup; the time-shifted copy is not.
+        assertEquals(listOf("|FR| BFM TV ᴴᴰ"), provider.duplicates(bfm.url).map { it.name })
     }
 
     @Test

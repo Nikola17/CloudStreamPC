@@ -127,7 +127,11 @@ object LiveRelay {
         @Synchronized get() {
             val shared = app.baseClient
             clientFor?.takeIf { it.first === shared }?.let { return it.second }
-            return shared.newBuilder().connectTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(true).cache(null).build()
+            // No connection reuse: after a frozen stream is dropped, a reused connection can still carry the rest of the
+            // old stream ("Unexpected status line" with video bytes, seen with a real IPTV provider). A new connection
+            // per request costs a few milliseconds.
+            return shared.newBuilder().connectTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(true).cache(null)
+                .connectionPool(okhttp3.ConnectionPool(0, 1, TimeUnit.SECONDS)).build()
                 .also { clientFor = shared to it }
         }
 

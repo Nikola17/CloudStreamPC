@@ -147,6 +147,22 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     private suspend fun xtream(action: String, extra: String = ""): JsonNode =
         mapper.readTree(app.get("$server/player_api.php?$auth&action=$action$extra", headers = streamHeaders, timeout = 90).text)
 
+    /**
+     * The big lists (channels, movies, series), read one entry at a time: large providers send tens of MB
+     * (90 MB of movies seen), more than the HTTP library accepts as text and too much to hold as one tree.
+     */
+    private suspend fun xtreamEach(action: String, each: (JsonNode) -> Unit) {
+        val response = app.get("$server/player_api.php?$auth&action=$action", headers = streamHeaders, timeout = 300)
+        response.body.byteStream().use { input ->
+            mapper.factory.createParser(input).use { parser ->
+                if (parser.nextToken() != com.fasterxml.jackson.core.JsonToken.START_ARRAY) return
+                while (parser.nextToken() == com.fasterxml.jackson.core.JsonToken.START_OBJECT) {
+                    each(mapper.readTree(parser))
+                }
+            }
+        }
+    }
+
     private suspend fun readAccountInfo(): IptvAccountInfo? = runCatching {
         val root = mapper.readTree(app.get("$server/player_api.php?$auth", headers = streamHeaders, timeout = 30).text)
         parseAccountInfo(root)
@@ -161,30 +177,30 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         info = readAccountInfo()
         info?.let { Logger.info("IPTV ${account.name} : $it") }
         val liveCats = categoryNames("get_live_categories")
-        runCatching { xtream("get_live_streams") }.getOrNull().items().forEach {
+        runCatching { xtreamEach("get_live_streams") {
             items += IptvItem(
-                IptvItem.Kind.LIVE, it.str("stream_id") ?: return@forEach, it.str("name") ?: return@forEach,
+                IptvItem.Kind.LIVE, it.str("stream_id") ?: return@xtreamEach, it.str("name") ?: return@xtreamEach,
                 liveCats[it.str("category_id")] ?: "Autres", it.str("stream_icon"),
                 epgId = it.str("epg_channel_id")?.ifBlank { null },
                 archiveDays = if (it.str("tv_archive") == "1") it.str("tv_archive_duration")?.toIntOrNull() ?: 0 else 0,
             )
-        }
+        } }.onFailure { Logger.error("IPTV ${account.name} : liste get_live_streams illisible", it) }
         val vodCats = categoryNames("get_vod_categories")
-        runCatching { xtream("get_vod_streams") }.getOrNull().items().forEach {
+        runCatching { xtreamEach("get_vod_streams") {
             items += IptvItem(
-                IptvItem.Kind.MOVIE, it.str("stream_id") ?: return@forEach, it.str("name") ?: return@forEach,
+                IptvItem.Kind.MOVIE, it.str("stream_id") ?: return@xtreamEach, it.str("name") ?: return@xtreamEach,
                 vodCats[it.str("category_id")] ?: "Autres", it.str("stream_icon"),
                 it.double("rating"), it.str("added")?.toLongOrNull() ?: 0, it.str("container_extension") ?: "mp4",
             )
-        }
+        } }.onFailure { Logger.error("IPTV ${account.name} : liste get_vod_streams illisible", it) }
         val seriesCats = categoryNames("get_series_categories")
-        runCatching { xtream("get_series") }.getOrNull().items().forEach {
+        runCatching { xtreamEach("get_series") {
             items += IptvItem(
-                IptvItem.Kind.SERIES, it.str("series_id") ?: return@forEach, it.str("name") ?: return@forEach,
+                IptvItem.Kind.SERIES, it.str("series_id") ?: return@xtreamEach, it.str("name") ?: return@xtreamEach,
                 seriesCats[it.str("category_id")] ?: "Autres", it.str("cover"),
                 it.double("rating"), it.str("last_modified")?.toLongOrNull() ?: 0,
             )
-        }
+        } }.onFailure { Logger.error("IPTV ${account.name} : liste get_series illisible", it) }
         if (items.isEmpty()) error("Aucun contenu : vérifiez l'adresse du serveur, l'identifiant et le mot de passe.")
         return items
     }
@@ -194,7 +210,8 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
     private data class M3uEpisode(val name: String, val season: Int?, val episode: Int?, val url: String, val poster: String?)
 
     private suspend fun loadM3u(): List<IptvItem> {
-        val text = app.get(account.url, headers = streamHeaders, timeout = 120).text
+        // Playlists of big providers are often over the 5 MB the HTTP library reads as plain text.
+        val text = app.get(account.url, headers = streamHeaders, timeout = 300).body.string()
         require(text.trimStart().startsWith("#EXTM3U") || text.contains("#EXTINF")) { "Ce lien n'est pas une playlist M3U." }
         val items = mutableListOf<IptvItem>()
         val series = linkedMapOf<String, MutableList<M3uEpisode>>()
@@ -529,6 +546,21 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         return links
     }
 
+    /**
+     * The same channel elsewhere on this account (other quality or category: "BFM TV HD", "BFM TV SD"...).
+     * Providers often serve these copies from other servers: when one is down, another usually plays.
+     * Same guide id and same name once quality marks are removed, so "+4", replays or "-2H" copies are left out.
+     */
+    internal suspend fun duplicates(channelUrl: String, max: Int = 3): List<IptvItem> {
+        val item = liveItem(channelUrl) ?: return emptyList()
+        val key = channelKey(item.name)
+        val epg = item.epgId?.lowercase()?.takeIf { it.isNotBlank() }
+        return catalogOrLoad().filter {
+            it.kind == IptvItem.Kind.LIVE && it.id != item.id && channelKey(it.name) == key &&
+                (epg == null || it.epgId?.lowercase() == epg)
+        }.take(max)
+    }
+
     /** Channel known by its page address: guide id and name, to find it on other accounts. */
     suspend fun channelIdentity(channelUrl: String): Pair<String?, String>? = liveItem(channelUrl)?.let { it.epgId to it.name }
 
@@ -545,9 +577,9 @@ class IptvProvider(val account: IptvAccount) : MainAPI() {
         /** Encoding for a path segment (a space is %20, not +). */
         fun pathEnc(value: String): String = enc(value).replace("+", "%20")
 
-        /** "TF1 HD", "FR| TF1 FHD", "TF1 (backup)" → "tf1": to recognize a channel across accounts. */
+        /** "TF1 HD", "FR| TF1 FHD", "|FR| TF1 ᵁᴴᴰ", "TF1 (backup)" → "tf1": to recognize a channel across accounts. */
         fun channelKey(name: String): String = name.lowercase()
-            .replace(Regex("""^\s*[a-z]{2,3}\s*[|:-]\s*"""), "")
+            .replace(Regex("""^\s*\|?\s*[a-z]{2,3}\s*[|:-]\s*"""), "")
             .replace(Regex("""\b(fhd|uhd|hd|sd|4k|hevc|h265|1080p?|720p?|backup|direct|live)\b|\(.*?\)|\[.*?]"""), " ")
             .let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "") }
             .replace(Regex("[^a-z0-9+]+"), "")

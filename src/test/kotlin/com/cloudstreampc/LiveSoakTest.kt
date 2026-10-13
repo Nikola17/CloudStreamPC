@@ -50,21 +50,23 @@ class LiveSoakTest {
     @Test
     fun liveKeepsPlaying() {
         val seconds = System.getProperty("test.soak")?.toIntOrNull() ?: return
-        val channels: List<Pair<String, List<String>>> = System.getProperty("test.soak.channels")?.split(";;")
-            ?.filter { '=' in it }?.map { it.substringBefore('=').trim() to it.substringAfter('=').split('|').map(String::trim).filter(String::isNotEmpty) }
-            ?: System.getProperty("test.soak.sources")?.split(',')?.filter { it.isNotBlank() }?.let { listOf("Direct" to it) }
+        fun plain(name: String, urls: List<String>) = name to urls.mapIndexed { i, u -> LiveSource(u, label = "$name ${i + 1}") }
+        val channels: List<Pair<String, List<LiveSource>>> = iptvChannels()
+            ?: System.getProperty("test.soak.channels")?.split(";;")
+                ?.filter { '=' in it }?.map { plain(it.substringBefore('=').trim(), it.substringAfter('=').split('|').map(String::trim).filter(String::isNotEmpty)) }
+            ?: System.getProperty("test.soak.sources")?.split(',')?.filter { it.isNotBlank() }?.let { listOf(plain("Direct", it)) }
             ?: return
         val mpv = (listOfNotNull(System.getProperty("test.mpv")) + listOf("/usr/bin/mpv", "/usr/local/bin/mpv"))
             .map(::File).firstOrNull { it.isFile } ?: return
-        Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, playerInterface = false, fullscreen = false, liveBuffer = 8) }
+        Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, playerInterface = false, fullscreen = false, liveBuffer = System.getProperty("test.soak.buffer")?.toIntOrNull() ?: 8) }
 
         val ipc = MpvIpc.newServerPath()
         val watch = Watch()
         var process: Process? = null
         val results = mutableListOf<String>()
         try {
-            channels.forEachIndexed { index, (name, urls) ->
-                val relayUrl = LiveRelay.open(urls.mapIndexed { i, u -> LiveSource(u, label = "$name ${i + 1}") })
+            channels.forEachIndexed { index, (name, sources) ->
+                val relayUrl = LiveRelay.open(sources)
                 watch.restart()
                 watch.channel = name
                 watch.awaitingFile = index > 0
@@ -120,5 +122,29 @@ class LiveSoakTest {
             LiveRelay.close()
         }
         println("BILAN\n" + results.joinToString("\n"))
+    }
+
+    /**
+     * A real Xtream account, the way the app plays it: `-Dtest.soak.iptv=http://host|user|password` and
+     * `-Dtest.soak.iptv.ids=275681,275758` (stream ids). Each channel gets the backups the app builds
+     * (other format, copies of the channel on the account, other accounts).
+     */
+    private fun iptvChannels(): List<Pair<String, List<LiveSource>>>? {
+        val (url, user, password) = System.getProperty("test.soak.iptv")?.split('|')?.takeIf { it.size == 3 } ?: return null
+        val ids = System.getProperty("test.soak.iptv.ids")?.split(',')?.map(String::trim)?.filter(String::isNotEmpty) ?: return null
+        val provider = com.cloudstreampc.providers.IptvProvider(com.cloudstreampc.core.IptvAccount("soak", "Soak", com.cloudstreampc.core.IptvType.XTREAM, url, user, password))
+        return runBlocking {
+            ids.mapNotNull { id ->
+                val response = provider.load("iptv://soak/live/$id") ?: return@mapNotNull null
+                val queue = com.cloudstreampc.player.PlayQueue.build(response, emptyList())
+                val request = com.cloudstreampc.player.PlayRequest(provider, response, queue, 0, autoPlay = true)
+                val links = mutableListOf<com.lagradost.cloudstream3.utils.ExtractorLink>()
+                provider.loadLinks(queue.first().data, false, {}) { links += it }
+                val chosen = com.cloudstreampc.player.PlaybackManager.bestLink(links) ?: return@mapNotNull null
+                val sources = com.cloudstreampc.player.LiveTv.sources(request, chosen)
+                println("  [${response.name}] sources : ${sources.joinToString { it.label }}")
+                response.name to sources
+            }
+        }
     }
 }
