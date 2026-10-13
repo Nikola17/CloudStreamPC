@@ -106,7 +106,7 @@ class LiveSoakTest {
                     }.apply { isDaemon = true; start() }
                 } else {
                     // Zapping, as the app does: same window, the new channel replaces the old one.
-                    MpvIpc.send(ipc, listOf("set_property", "force-media-title", name), listOf("loadfile", relayUrl, "replace"), listOf("set_property", "pause", false))
+                    MpvIpc.send(ipc, *ExternalPlayer.liveBufferCommands().toTypedArray(), listOf("set_property", "force-media-title", name), listOf("loadfile", relayUrl, "replace"), listOf("set_property", "pause", false))
                 }
                 val end = watch.since + seconds * 1000L
                 while (System.currentTimeMillis() < end && process?.isAlive == true) {

@@ -197,6 +197,7 @@ object PlaybackManager {
         val userAgent = headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: com.lagradost.cloudstream3.USER_AGENT
         val sent = MpvIpc.send(
             ipcPath,
+            *ExternalPlayer.liveBufferCommands().toTypedArray(),
             listOf("set_property", "user-agent", userAgent),
             listOf("set_property", "force-media-title", titleOf(request.playable)),
             listOf("loadfile", target.url, "replace"),
@@ -478,6 +479,7 @@ object PlaybackManager {
         // Options set before `loadfile` apply to the new file (and replace the previous episode's).
         val sent = MpvIpc.send(
             ipcPath,
+            *ExternalPlayer.liveBufferCommands().toTypedArray(),
             listOf("set_property", "user-agent", userAgent),
             listOf("set_property", "referrer", referer),
             listOf("set_property", "http-header-fields", otherHeaders),

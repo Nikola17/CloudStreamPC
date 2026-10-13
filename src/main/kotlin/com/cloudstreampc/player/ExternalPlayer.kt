@@ -117,6 +117,15 @@ object ExternalPlayer {
 
     private const val DEEP_LIVE_BUFFER = 20
 
+    /** Another channel in the same player: back to the margin of the settings (quick start). */
+    fun liveBufferCommands(): List<List<Any>> {
+        val buffer = Store.settings.liveBuffer.coerceIn(2, 60)
+        return listOf(
+            listOf("set_property", "cache-pause-wait", buffer),
+            listOf("set_property", "demuxer-readahead-secs", maxOf(60, buffer * 4)),
+        )
+    }
+
     fun liveArgs(): List<String> {
         val buffer = Store.settings.liveBuffer.coerceIn(2, 60)
         return listOf(
