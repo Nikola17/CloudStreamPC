@@ -61,6 +61,8 @@ class LiveSoakTest {
         Store.updateSettings { it.copy(player = PlayerKind.MPV, playerPath = mpv.path, playerInterface = false, fullscreen = false, liveBuffer = System.getProperty("test.soak.buffer")?.toIntOrNull() ?: 8) }
 
         val ipc = MpvIpc.newServerPath()
+        // As in the app: a channel that keeps dropping gets a bigger margin in the player.
+        LiveRelay.onUnsteady = { Thread { ExternalPlayer.deepenLiveBuffer(ipc) }.start() }
         val watch = Watch()
         var process: Process? = null
         val results = mutableListOf<String>()

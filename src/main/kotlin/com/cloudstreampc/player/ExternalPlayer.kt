@@ -99,6 +99,24 @@ object ExternalPlayer {
      * Live TV: keep [Settings.liveBuffer] seconds ahead (a cut shorter than that is never seen),
      * reconnect by itself if the stream drops, and skip damaged packets instead of stopping.
      */
+    /**
+     * A channel that keeps dropping: the player waits for 20 s of picture when it has to pause, and reads
+     * further ahead, so the next silences of the provider are not seen. Measured on a real subscription:
+     * a channel silent for more than 6 s every minute or so played without a single cut with 20 s, and
+     * with a few pauses with the default 8 s. Only for that channel: the others keep their quick start.
+     */
+    fun deepenLiveBuffer(ipcPath: String) {
+        val buffer = Store.settings.liveBuffer
+        if (buffer >= DEEP_LIVE_BUFFER) return
+        MpvIpc.send(
+            ipcPath,
+            listOf("set_property", "cache-pause-wait", DEEP_LIVE_BUFFER),
+            listOf("set_property", "demuxer-readahead-secs", DEEP_LIVE_BUFFER * 4),
+        )
+    }
+
+    private const val DEEP_LIVE_BUFFER = 20
+
     fun liveArgs(): List<String> {
         val buffer = Store.settings.liveBuffer.coerceIn(2, 60)
         return listOf(

@@ -67,6 +67,12 @@ object LiveRelay {
     /** "Reconnexion…", "Source de secours : …" for the player's screen. */
     @Volatile var onStatus: (String) -> Unit = {}
 
+    /**
+     * The channel dropped twice within two minutes: the player is told to keep a bigger margin for it
+     * (see [ExternalPlayer.deepenLiveBuffer]). Steady channels keep a quick start and a small buffer.
+     */
+    @Volatile var onUnsteady: () -> Unit = {}
+
     private class Session(val id: String, val sources: List<LiveSource>) {
         @Volatile var closed = false
         @Volatile var upstream: Response? = null
@@ -80,6 +86,9 @@ object LiveRelay {
         /** Stall watch of the stream being copied: last data, and how long a silence may last. */
         @Volatile var reading = false
         @Volatile var lastReadAt = 0L
+        /** Recent drops of this channel, and whether the player was already told to keep a bigger margin. */
+        val dropTimes = ArrayDeque<Long>()
+        @Volatile var unsteady = false
         @Volatile var stallLimitMs = 0L
 
         fun close() {
@@ -279,6 +288,16 @@ object LiveRelay {
             val healthy = got > 256 * 1024 || System.currentTimeMillis() - startedAt > 20_000 && got > 0
             failures = if (healthy) 0 else failures + 1
             session.reconnects.incrementAndGet()
+            synchronized(session.dropTimes) {
+                val now = System.currentTimeMillis()
+                session.dropTimes.addLast(now)
+                while (now - session.dropTimes.first() > 120_000) session.dropTimes.removeFirst()
+                if (session.dropTimes.size >= 2 && !session.unsteady) {
+                    session.unsteady = true
+                    Logger.info("Direct : chaîne instable, marge du lecteur agrandie")
+                    runCatching { onUnsteady() }
+                }
+            }
             if (System.currentTimeMillis() - lastData > giveUpAfterMs || dead.size == session.sources.size) {
                 lastGiveUpUnreadable = dead.size == session.sources.size
                 Logger.info("Direct : aucune source ne répond, abandon")

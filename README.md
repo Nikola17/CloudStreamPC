@@ -161,6 +161,9 @@ Mesures (10 minutes chacune, relais + mpv) :
   zapping) : aucune coupure hors démarrage sur 5 chaînes (jusqu'à 4 reconnexions cachées par le tampon) ; sur BFM TV,
   dont toutes les versions se taisaient régulièrement plus de 6 s chez le fournisseur : quelques pauses avec le
   tampon « Équilibré », aucune avec « Stabilité maximale » (9 reconnexions et un changement de source invisibles).
+  Depuis la 3.0.7, une chaîne qui se coupe 2 fois en 2 minutes reçoit d'elle-même la marge de « Stabilité
+  maximale » (20 s), sans ralentir le démarrage des autres. Fournisseur très instable simulé (90 reconnexions en
+  10 min) : plus aucune pause ni image figée hors de la panne simultanée des deux comptes.
   Les catalogues de ce fournisseur (14 Mo de chaînes, 90 Mo de films, 53 Mo de séries, 319 664 éléments) sont lus
   en flux. Test : `-Dtest.soak.iptv=http://serveur|identifiant|mot de passe -Dtest.soak.iptv.ids=…`.
 - **Une seule connexion à la fois** au fournisseur (la plupart des abonnements n'en permettent qu'une) : changer de

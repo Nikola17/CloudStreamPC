@@ -308,6 +308,9 @@ object PlaybackManager {
             LiveRelay.onStatus = { text ->
                 if (liveWindow?.session === session && ipcPath != null) scope.launch { MpvIpc.toScript(ipcPath, "status", text) }
             }
+            LiveRelay.onUnsteady = {
+                if (liveWindow?.session === session && ipcPath != null) scope.launch { ExternalPlayer.deepenLiveBuffer(ipcPath) }
+            }
         }
         scope.launch { follow(session, process, ipcPath) }
         if (ipcPath != null) {
