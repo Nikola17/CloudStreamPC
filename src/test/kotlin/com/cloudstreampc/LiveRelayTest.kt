@@ -225,6 +225,17 @@ class LiveRelayTest {
     }
 
     @Test
+    fun aSourceThatKeepsDroppingGivesWayToASteadyCopy() {
+        // /drop.ts plays a little then cuts, every time: after 3 cuts the steady copy takes over.
+        val url = LiveRelay.open(listOf(LiveSource("$base/drop.ts", label = "instable"), LiveSource("$base/good.ts", label = "copie")))
+        val data = read(url, 15_000, bytes = 188 * 4000)
+        val packets = assertCleanTs(data)
+        assertTrue(packets.count { it.first == 3 } > 1000, "la copie stable est lue")
+        assertEquals("copie", LiveRelay.currentSource?.label)
+        assertEquals(1, LiveRelay.maxOpenConnections.get(), "jamais deux connexions au fournisseur")
+    }
+
+    @Test
     fun turnsLiveHlsIntoOneContinuousStream() {
         val url = LiveRelay.open(listOf(LiveSource("$base/live/master.m3u8", label = "hls")))
         val data = read(url, 7_000)

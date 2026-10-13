@@ -44,6 +44,9 @@ object LiveRelay {
     internal var minStallMs = 2_500L
     /** "Too many connections" after a drop: the provider frees our previous connection within seconds. */
     internal var busyRetryMs = 1_500L
+    /** A source that dropped this many times within [flakyWindowMs] gives way to the next one. */
+    internal var flakyDrops = 3
+    internal var flakyWindowMs = 90_000L
     /** Pauses between reconnections that brought nothing, growing then capped. */
     internal var backoffMs = listOf(300L, 1_000L, 2_000L, 4_000L)
     /** Failed attempts in a row on one source before trying the next. */
@@ -211,6 +214,8 @@ object LiveRelay {
         var failures = 0
         var lastData = System.currentTimeMillis()
         val dead = mutableSetOf<Int>()
+        // Times each source dropped lately: one that keeps dropping gives way to the next one.
+        val drops = mutableMapOf<Int, ArrayDeque<Long>>()
         val sessionStart = System.currentTimeMillis()
         // Changing channel: give the provider a moment to see the previous connection close.
         sleepUnlessClosed(session, 300 - (sessionStart - lastClose))
@@ -269,8 +274,15 @@ object LiveRelay {
                 onStatus("Chaîne indisponible")
                 return
             }
-            val switch = index in dead || failures >= attemptsPerSource
+            val now = System.currentTimeMillis()
+            val recent = drops.getOrPut(index) { ArrayDeque() }.apply { addLast(now); while (now - first() > flakyWindowMs) removeFirst() }
+            // Plays, then freezes again and again (seen with a real IPTV provider, every 15 to 30 s): the
+            // reconnections are hidden by the buffer, but not always. A copy of the channel is often steadier.
+            val flaky = session.sources.size > 1 && recent.size >= flakyDrops
+            if (flaky) Logger.info("Direct : ${source.label} se coupe souvent (${recent.size} fois en ${flakyWindowMs / 1000} s), essai d'une autre source")
+            val switch = index in dead || failures >= attemptsPerSource || flaky
             if (switch) {
+                recent.clear()
                 val next = (1..session.sources.size).map { (index + it) % session.sources.size }.firstOrNull { it !in dead } ?: return
                 if (next != index) {
                     session.sourceIndex = next
