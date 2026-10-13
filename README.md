@@ -145,7 +145,7 @@ recolle le flux ; le lecteur garde quelques secondes d'avance (réglage « Tampo
 et l'image continue sans écran noir. Si la chaîne ne revient pas, il passe tout seul sur une source de secours :
 l'autre format du même abonnement (MPEG-TS ou HLS), les autres versions de la chaîne sur le même compte (HD, SD,
 autre catégorie : souvent sur d'autres serveurs), puis la même chaîne sur vos autres comptes IPTV. Une source qui
-se coupe 3 fois en 90 s laisse la place à la suivante.
+se coupe 5 fois en 2 minutes laisse la place à la suivante (des coupures plus rares sont cachées par le tampon).
 Il retire aussi les secondes que le fournisseur renvoie en double à chaque reconnexion (l'image ne recule
 pas), détecte un flux figé en 2,5 s, passe tout de suite sur une source libre quand le fournisseur dit
 « connexion déjà prise », et garde le lecteur connecté pendant les reconnexions (jamais deux connexions chez
@@ -158,8 +158,9 @@ Mesures (10 minutes chacune, relais + mpv) :
   la panne double des deux comptes, contre 5 pauses (47 s) et 5 images figées avant cette version.
   Test reproductible : `LiveSoakTest` (`-Dtest.soak=600 -Dtest.soak.sources=…`).
 - **vrai abonnement IPTV** (6 chaînes : TF1, France 2, M6, BFM TV, beIN Sports 1, Canal+, 5 minutes chacune, avec
-  zapping) : aucune coupure hors démarrage sur 5 chaînes ; sur BFM TV, dont la source se figeait toutes les 15 à
-  30 s chez le fournisseur, passage automatique sur une autre version de la chaîne et une seule image figée.
+  zapping) : aucune coupure hors démarrage sur 5 chaînes (jusqu'à 4 reconnexions cachées par le tampon) ; sur BFM TV,
+  dont la source se figeait toutes les 15 à 30 s chez le fournisseur, passage automatique sur une autre version
+  de la chaîne et une seule image figée.
   Les catalogues de ce fournisseur (14 Mo de chaînes, 90 Mo de films, 53 Mo de séries, 319 664 éléments) sont lus
   en flux. Test : `-Dtest.soak.iptv=http://serveur|identifiant|mot de passe -Dtest.soak.iptv.ids=…`.
 - **Une seule connexion à la fois** au fournisseur (la plupart des abonnements n'en permettent qu'une) : changer de
