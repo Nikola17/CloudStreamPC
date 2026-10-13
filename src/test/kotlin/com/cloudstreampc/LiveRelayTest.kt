@@ -181,6 +181,13 @@ class LiveRelayTest {
         aligner.reset()
         send(5_000_000..5_000_010)
         assertEquals(161, out.size() / 188)
+
+        // A copy of the channel whose clock is a few seconds behind, on another stream: nothing is skipped
+        // once the source has changed (before, it was taken for repeats and dropped).
+        aligner.reset()
+        aligner.forgetClock()
+        send(4_999_900..4_999_910)
+        assertEquals(172, out.size() / 188)
     }
 
     @Test
@@ -233,6 +240,21 @@ class LiveRelayTest {
         assertTrue(packets.count { it.first == 3 } > 1000, "la copie stable est lue")
         assertEquals("copie", LiveRelay.currentSource?.label)
         assertEquals(1, LiveRelay.maxOpenConnections.get(), "jamais deux connexions au fournisseur")
+    }
+
+    @Test
+    fun aDroppingStreamGivesWayToACopyRatherThanItsOtherFormat() {
+        // Second source: the same stream in another format (same server). Third: a copy of the channel.
+        val url = LiveRelay.open(
+            listOf(
+                LiveSource("$base/drop.ts", label = "instable"),
+                LiveSource("$base/drop.m3u8", label = "même flux"),
+                LiveSource("$base/good.ts", label = "copie"),
+            ),
+        )
+        read(url, 15_000, bytes = 188 * 4000)
+        assertEquals("copie", LiveRelay.currentSource?.label)
+        assertEquals("$base/drop", LiveRelay.streamOf("$base/drop.m3u8?token=1"))
     }
 
     @Test

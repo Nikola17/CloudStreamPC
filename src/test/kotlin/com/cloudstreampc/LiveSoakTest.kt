@@ -93,7 +93,11 @@ class LiveSoakTest {
                                 "time-pos" -> if (value.isNumber && !watch.awaitingFile) {
                                     if (watch.firstPlay == null) { watch.firstPlay = now; watch.lastPos = null }
                                     val previous = watch.lastPos
-                                    if (previous == null || value.asDouble() > previous) { watch.lastPos = value.asDouble(); watch.lastAdvance = now; watch.frozen = false }
+                                    // Any change is the picture moving: after a change of source the clock can start lower.
+                                    if (previous == null || value.asDouble() != previous) {
+                                        if (watch.frozen) println("  [${watch.channel}] %6.1fs image repartie après %.1f s".format(t, (now - watch.lastAdvance) / 1000.0))
+                                        watch.lastPos = value.asDouble(); watch.lastAdvance = now; watch.frozen = false
+                                    }
                                 }
                             }
                         }

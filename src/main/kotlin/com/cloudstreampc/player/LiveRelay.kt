@@ -223,8 +223,13 @@ object LiveRelay {
         val sessionStart = System.currentTimeMillis()
         // Changing channel: give the provider a moment to see the previous connection close.
         sleepUnlessClosed(session, 300 - (sessionStart - lastClose))
+        var playing = session.sourceIndex
         while (!session.closed && !reader.stale) {
             val index = session.sourceIndex
+            if (index != playing) {
+                aligner.forgetClock()
+                playing = index
+            }
             val source = session.sources[index]
             val before = aligner.written
             val startedAt = System.currentTimeMillis()
@@ -287,7 +292,12 @@ object LiveRelay {
             val switch = index in dead || failures >= attemptsPerSource || flaky
             if (switch) {
                 recent.clear()
-                val next = (1..session.sources.size).map { (index + it) % session.sources.size }.firstOrNull { it !in dead } ?: return
+                val order = (1..session.sources.size).map { (index + it) % session.sources.size }.filter { it !in dead }
+                // Dropping again and again: the other format of the same stream comes from the same server,
+                // a copy of the channel (another stream) is tried first.
+                val stream = streamOf(source.url)
+                val next = (if (flaky) order.firstOrNull { streamOf(session.sources[it].url) != stream } else null)
+                    ?: order.firstOrNull() ?: return
                 if (next != index) {
                     session.sourceIndex = next
                     onStatus("Source de secours : ${session.sources[next].label}")
@@ -299,6 +309,12 @@ object LiveRelay {
             val wait = if (healthy) backoffMs.first() else backoffMs[(failures - 1).coerceIn(0, backoffMs.lastIndex)]
             sleepUnlessClosed(session, wait)
         }
+    }
+
+    /** The stream behind a link, whatever its format: ".../live/u/p/42.ts" and ".../42.m3u8" are the same one. */
+    internal fun streamOf(url: String): String = url.substringBefore('?').let { path ->
+        val last = path.substringAfterLast('/')
+        if ('.' in last) path.substringBeforeLast('.') else path
     }
 
     /** Closes the provider connection of this thread's reader (not the one of a newer reader). */
@@ -537,6 +553,18 @@ object LiveRelay {
             }
         }
 
+        /**
+         * Another source (a copy of the channel on another server): its clock and streams have nothing to do
+         * with what was sent, nothing is skipped. Without this, its new packets were taken for repeats and
+         * dropped, up to a minute of picture (seen with a real IPTV provider).
+         */
+        fun forgetClock() {
+            lastPcr = -1
+            pcrPid = -1
+            skipUntilPcr = -1
+            skippedBytes = 0
+        }
+
         /** Program clock (90 kHz) of the last packet passed on, and its stream; -1 when unknown. */
         private var lastPcr = -1L
         private var pcrPid = -1
@@ -555,7 +583,9 @@ object LiveRelay {
                 if (skipUntilPcr >= 0) {
                     val pid = pidOf(bytes, i)
                     val resume = when {
-                        pcr < 0 || (pcrPid >= 0 && pid != pcrPid) -> false
+                        pcr < 0 -> false
+                        // A clock on another stream: not the broadcast that was being sent.
+                        pcrPid >= 0 && pid != pcrPid -> true
                         else -> {
                             val ahead = (pcr - skipUntilPcr).mod(PCR_WRAP)
                             // Newer than what was sent, or another clock altogether (backup source): go on.
@@ -617,7 +647,8 @@ object LiveRelay {
             private const val PCR_WRAP = 1L shl 33
             /** Clocks further apart than 30 s are not the same broadcast. */
             private const val MAX_JUMP = 30L * 90_000
-            private const val MAX_SKIP = 32L * 1024 * 1024
+            /** A provider repeats a few seconds at most: never more than this is skipped (about 10 s of HD). */
+            private const val MAX_SKIP = 8L * 1024 * 1024
 
             private fun pidOf(b: ByteArray, i: Int) = ((b[i + 1].toInt() and 0x1F) shl 8) or (b[i + 2].toInt() and 0xFF)
 
