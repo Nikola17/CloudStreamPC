@@ -44,9 +44,13 @@ object LiveRelay {
     internal var minStallMs = 2_500L
     /** "Too many connections" after a drop: the provider frees our previous connection within seconds. */
     internal var busyRetryMs = 1_500L
-    /** A source that dropped this many times within [flakyWindowMs] gives way to the next one. */
-    internal var flakyDrops = 3
-    internal var flakyWindowMs = 90_000L
+    /**
+     * A source that dropped this many times within [flakyWindowMs] gives way to the next one. Changing source
+     * costs a short freeze (another stream to join), so only sources that drop really often are left: measured
+     * on a real provider, one dropping every 15-30 s gains from it, one dropping every 1-2 minutes doesn't.
+     */
+    internal var flakyDrops = 5
+    internal var flakyWindowMs = 120_000L
     /** Pauses between reconnections that brought nothing, growing then capped. */
     internal var backoffMs = listOf(300L, 1_000L, 2_000L, 4_000L)
     /** Failed attempts in a row on one source before trying the next. */
