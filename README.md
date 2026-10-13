@@ -159,8 +159,8 @@ Mesures (10 minutes chacune, relais + mpv) :
   Test reproductible : `LiveSoakTest` (`-Dtest.soak=600 -Dtest.soak.sources=…`).
 - **vrai abonnement IPTV** (6 chaînes : TF1, France 2, M6, BFM TV, beIN Sports 1, Canal+, 5 minutes chacune, avec
   zapping) : aucune coupure hors démarrage sur 5 chaînes (jusqu'à 4 reconnexions cachées par le tampon) ; sur BFM TV,
-  dont la source se figeait toutes les 15 à 30 s chez le fournisseur, passage automatique sur une autre version
-  de la chaîne et une seule image figée.
+  dont toutes les versions se taisaient régulièrement plus de 6 s chez le fournisseur : quelques pauses avec le
+  tampon « Équilibré », aucune avec « Stabilité maximale » (9 reconnexions et un changement de source invisibles).
   Les catalogues de ce fournisseur (14 Mo de chaînes, 90 Mo de films, 53 Mo de séries, 319 664 éléments) sont lus
   en flux. Test : `-Dtest.soak.iptv=http://serveur|identifiant|mot de passe -Dtest.soak.iptv.ids=…`.
 - **Une seule connexion à la fois** au fournisseur (la plupart des abonnements n'en permettent qu'une) : changer de

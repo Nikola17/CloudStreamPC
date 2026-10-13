@@ -49,6 +49,8 @@ object LiveRelay {
      * costs a short freeze (another stream to join), so only sources that drop really often are left: measured
      * on a real provider, one dropping every 15-30 s gains from it, one dropping every 1-2 minutes doesn't.
      */
+    /** Longest wait for the provider's answer to a request (redirections included), before the next try. */
+    internal var answerTimeoutMs = 8_000L
     internal var flakyDrops = 5
     internal var flakyWindowMs = 120_000L
     /** Pauses between reconnections that brought nothing, growing then capped. */
@@ -336,7 +338,15 @@ object LiveRelay {
         val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         maxOpenConnections.accumulateAndGet(openConnections.incrementAndGet()) { a, b -> maxOf(a, b) }
         val response = try {
-            baseClient.newBuilder().readTimeout(stallTimeoutMs, TimeUnit.MILLISECONDS).build().newCall(request).execute()
+            val call = baseClient.newBuilder().readTimeout(stallTimeoutMs, TimeUnit.MILLISECONDS).build().newCall(request)
+            // The answer itself (redirections included) has a time limit: a provider that accepts the connection
+            // and then says nothing kept the picture frozen 33 s (each step had its own read timeout).
+            val guard = watchdog.schedule({ call.cancel() }, answerTimeoutMs, TimeUnit.MILLISECONDS)
+            try {
+                call.execute()
+            } finally {
+                guard.cancel(false)
+            }
         } catch (e: Exception) {
             openConnections.decrementAndGet()
             throw e

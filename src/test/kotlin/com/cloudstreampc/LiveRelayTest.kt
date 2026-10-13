@@ -71,6 +71,8 @@ class LiveRelayTest {
                         exchange.responseBody.flush()
                         Thread.sleep(30_000)
                     }
+                    // Accepts the connection, then never answers.
+                    path == "/silent.ts" -> Thread.sleep(30_000)
                     // The provider still counts a previous connection.
                     path == "/busy.ts" -> exchange.sendResponseHeaders(458, -1)
                     path == "/good.ts" -> {
@@ -110,6 +112,7 @@ class LiveRelayTest {
         LiveRelay.stallTimeoutMs = 1_500
         LiveRelay.backoffMs = listOf(50L, 100L, 200L, 400L)
         LiveRelay.attemptsPerSource = 2
+        LiveRelay.answerTimeoutMs = 1_500
         LiveRelay.maxOpenConnections.set(0)
     }
 
@@ -255,6 +258,15 @@ class LiveRelayTest {
         read(url, 15_000, bytes = 188 * 4000)
         assertEquals("copie", LiveRelay.currentSource?.label)
         assertEquals("$base/drop", LiveRelay.streamOf("$base/drop.m3u8?token=1"))
+    }
+
+    @Test
+    fun aProviderThatNeverAnswersIsLeftQuickly() {
+        val url = LiveRelay.open(listOf(LiveSource("$base/silent.ts", label = "muet"), LiveSource("$base/good.ts", label = "secours")))
+        val started = System.currentTimeMillis()
+        val data = read(url, 15_000, bytes = 188 * 2000)
+        assertTrue(assertCleanTs(data).count { it.first == 3 } >= 1000, "le secours est lu")
+        assertTrue(System.currentTimeMillis() - started < 10_000, "pas d'attente sans fin d'une réponse")
     }
 
     @Test
