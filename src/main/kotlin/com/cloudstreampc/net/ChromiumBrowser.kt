@@ -121,9 +121,26 @@ object ChromiumBrowser {
         }
     }
 
-    private val profile: File get() = File(AppDirs.cache, "browser").apply { mkdirs() }
+    /**
+     * The browser's profile (cookies of the sites checked by hand). When a browser left behind by an
+     * earlier run of the app (crash, killed) still holds it, Chromium refuses to start with it: a
+     * profile of this run's own is used instead.
+     */
+    @Volatile private var ownProfile = false
+    private val profile: File get() = File(AppDirs.cache, if (ownProfile) "browser-${ProcessHandle.current().pid()}" else "browser").apply { mkdirs() }
 
-    private fun launch(headless: Boolean, startUrl: String = "about:blank"): Instance {
+    private fun launch(headless: Boolean, startUrl: String = "about:blank"): Instance =
+        try {
+            launchWith(headless, startUrl)
+        } catch (e: IllegalStateException) {
+            val held = !ownProfile && runCatching { File(AppDirs.logs, "browser.log").readText() }.getOrDefault("").contains("ProcessSingleton")
+            if (!held) throw e
+            Logger.info("Profil du navigateur pris par un navigateur resté ouvert : profil de secours")
+            ownProfile = true
+            launchWith(headless, startUrl)
+        }
+
+    private fun launchWith(headless: Boolean, startUrl: String): Instance {
         val exe = find() ?: error("Aucun navigateur Chromium (Edge, Chrome, Brave, Chromium) n'est installé")
         val portFile = File(profile, "DevToolsActivePort").apply { delete() }
         val args = mutableListOf(
@@ -270,6 +287,9 @@ object ChromiumBrowser {
         try {
             browser.call("Network.enable", session = session)
             browser.call("Page.enable", session = session)
+            // Several pages at once (one per player of an event): each behaves as the visible, focused tab,
+            // otherwise the players of the others don't start and never ask for their stream.
+            runCatching { browser.call("Emulation.setFocusEmulationEnabled", mapOf("enabled" to true), session) }
             // The first browser started still calls itself "HeadlessChrome": players refuse it.
             userAgent?.let { runCatching { browser.call("Network.setUserAgentOverride", mapOf("userAgent" to it), session) } }
             val extra = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
@@ -332,6 +352,7 @@ object ChromiumBrowser {
     fun shutdown() {
         instance?.close()
         instance = null
+        if (ownProfile) runCatching { profile.deleteRecursively() }
     }
 }
 

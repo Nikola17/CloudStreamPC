@@ -20,7 +20,8 @@ class FstvEventsTest {
     fun eventPagePlayerGivesAStream() = runBlocking {
         val page = System.getProperty("test.fstv.page") ?: return@runBlocking
         System.setProperty("cloudstreampc.browser", System.getProperty("test.browser") ?: "/opt/pw-browsers/chromium")
-        val (found, _) = com.lagradost.cloudstream3.network.WebViewResolver(Regex("""\.m3u8"""), timeout = 40_000).resolveUsingWebView(page, referer = System.getProperty("test.fstv.referer"))
+        val (found, others) = com.lagradost.cloudstream3.network.WebViewResolver(Regex("""\.m3u8"""), additionalUrls = listOf(Regex(".")), timeout = 30_000).resolveUsingWebView(page, referer = System.getProperty("test.fstv.referer"))
+        others.map { it.url.toString().take(150) }.filterNot { Regex("""\.(png|jpe?g|gif|svg|woff2?|css|ico|webp)""").containsMatchIn(it) }.forEach { println("REQ $it") }
         println("FLUX : ${found?.url} referer=${found?.header("referer")} origin=${found?.header("origin")}")
         com.cloudstreampc.net.ChromiumBrowser.shutdown()
     }
@@ -28,6 +29,7 @@ class FstvEventsTest {
     @Test
     fun eventsHaveSources() = runBlocking {
         if (System.getProperty("test.fstv") != "true") return@runBlocking
+        System.getProperty("test.browser")?.let { System.setProperty("cloudstreampc.browser", it) }
         val repo = "https://raw.githubusercontent.com/Nikola17/cloudstream-frenchstream/main/repo.json"
         RepositoryManager.fetchPlugins(repo).filter { it.internalName == "FSTV" }.forEach { PluginManager.install(it, repo) }
         val api = APIHolder.allProviders.first { it.name == "French-Stream TV" }
@@ -45,5 +47,6 @@ class FstvEventsTest {
                 resolved.links.take(4).forEach { println("    - ${it.name} ${it.type} ${it.url.take(100)} referer=${it.referer}") }
             }
         }
+        com.cloudstreampc.net.ChromiumBrowser.shutdown()
     }
 }
