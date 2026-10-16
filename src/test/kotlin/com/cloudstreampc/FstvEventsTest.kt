@@ -15,6 +15,16 @@ import kotlin.test.Test
  * sources). Run by hand: `./gradlew test --tests '*FstvEventsTest*' -Dtest.fstv=true`.
  */
 class FstvEventsTest {
+    /** `-Dtest.fstv.page=https://bzh.lat/…` : the stream the event page's player asks for, seen by the app's browser. */
+    @Test
+    fun eventPagePlayerGivesAStream() = runBlocking {
+        val page = System.getProperty("test.fstv.page") ?: return@runBlocking
+        System.setProperty("cloudstreampc.browser", System.getProperty("test.browser") ?: "/opt/pw-browsers/chromium")
+        val (found, _) = com.lagradost.cloudstream3.network.WebViewResolver(Regex("""\.m3u8"""), timeout = 40_000).resolveUsingWebView(page, referer = System.getProperty("test.fstv.referer"))
+        println("FLUX : ${found?.url} referer=${found?.header("referer")} origin=${found?.header("origin")}")
+        com.cloudstreampc.net.ChromiumBrowser.shutdown()
+    }
+
     @Test
     fun eventsHaveSources() = runBlocking {
         if (System.getProperty("test.fstv") != "true") return@runBlocking

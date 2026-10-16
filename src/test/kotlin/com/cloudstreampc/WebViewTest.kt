@@ -34,6 +34,10 @@ class WebViewTest {
                 "/player" -> Triple(200, "text/html", """<html><head><title>Lecteur</title></head><body>
                     <script>setTimeout(() => fetch('/api/source?token=' + btoa('secret-42')), 300)</script></body></html>""")
                 "/api/source" -> Triple(200, "application/json", """{"file":"$base/video.m3u8"}""")
+                // A sports event page: the player is a frame from another site (localhost vs 127.0.0.1),
+                // whose script asks for the stream.
+                "/event" -> Triple(200, "text/html", """<html><body><iframe src="${base.replace("127.0.0.1", "localhost")}/framed-player"></iframe></body></html>""")
+                "/framed-player" -> Triple(200, "text/html", """<html><body><script>setTimeout(() => fetch('/live/stream.m3u8?s=' + atob('dG9rZW4=')), 300)</script></body></html>""")
                 // A Cloudflare-like check: a script sets the clearance cookie and reloads.
                 "/protected" -> if ("cf_clearance=ok" in cookie) Triple(200, "text/plain", "contenu protégé")
                 else Triple(503, "text/html", """<html><body>Checking your browser…<script>
@@ -56,6 +60,14 @@ class WebViewTest {
     }
 
     private fun hasBrowser() = File(browser).isFile.also { if (!it) println("Pas de Chromium ($browser) : test ignoré") }
+
+    @Test
+    fun seesTheRequestsOfAPlayerInAFrameOfAnotherSite() = runBlocking {
+        if (!hasBrowser()) return@runBlocking
+        val (found, _) = WebViewResolver(Regex("""\.m3u8"""), timeout = 15_000).resolveUsingWebView("$base/event")
+        val request = assertNotNull(found, "le flux demandé par le lecteur dans son cadre est vu")
+        assertEquals("token", request.url.queryParameter("s"))
+    }
 
     @Test
     fun findsTheAddressThePageRequests() = runBlocking {

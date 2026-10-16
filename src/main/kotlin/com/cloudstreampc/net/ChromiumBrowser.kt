@@ -132,7 +132,12 @@ object ChromiumBrowser {
             "--user-data-dir=${profile.path}",
             "--no-first-run", "--no-default-browser-check", "--disable-sync", "--disable-extensions",
             "--disable-background-networking", "--disable-component-update", "--mute-audio",
-            "--disable-features=Translate,MediaRouter,OptimizationHints",
+            // Players live in frames from other sites: kept in the page's process, their requests (the video
+            // address a WebViewResolver waits for) are reported with the page's. Videos start without a click.
+            "--disable-features=Translate,MediaRouter,OptimizationHints,IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--autoplay-policy=no-user-gesture-required",
+            "--disable-blink-features=AutomationControlled",
             "--window-size=1100,800",
         )
         if (headless) args += "--headless=new"
@@ -265,6 +270,8 @@ object ChromiumBrowser {
         try {
             browser.call("Network.enable", session = session)
             browser.call("Page.enable", session = session)
+            // The first browser started still calls itself "HeadlessChrome": players refuse it.
+            userAgent?.let { runCatching { browser.call("Network.setUserAgentOverride", mapOf("userAgent" to it), session) } }
             val extra = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
             if (extra.isNotEmpty()) browser.call("Network.setExtraHTTPHeaders", mapOf("headers" to extra), session)
             browser.call("Page.navigate", mapOf("url" to url, "referrer" to referer), session)
