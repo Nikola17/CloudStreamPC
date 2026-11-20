@@ -62,20 +62,6 @@ et outils lourds (moteur torrent, lecteur de bandes-annonces) téléchargés seu
 Par rapport à la version 2.6 : paquet Linux de 142 à 50 Mo. Chaque version publiée est comparée à la précédente,
 et la publication s'arrête si un fichier grossit de plus de 10 %.
 
-## Captures d'écran
-
-| | |
-|---|---|
-| ![Recommandations](docs/screenshots/recos.jpg) | ![Top 10](docs/screenshots/top10.jpg) |
-| **Recommandations** calculées à partir de ce que vous regardez | **Top 10** et rangées par catégorie |
-| ![Fiche d'une série](docs/screenshots/details.jpg) | ![Recherche](docs/screenshots/search.jpg) |
-| **Fiche d'une série** : saisons, épisodes, téléchargement | **Recherche** dans toutes les extensions |
-| ![Paramètres](docs/screenshots/settings.jpg) | ![Extensions](docs/screenshots/extensions.jpg) |
-| **Paramètres** organisés comme l'application Android | **Extensions** CloudStream et addons Stremio |
-
-![Guide TV](docs/screenshots/tvguide.jpg)
-**Guide TV** des comptes IPTV : programme en cours, heure actuelle, lecture d'un clic.
-
 ## Fonctionnalités
 
 **Accueil** façon plateforme VOD : grande bannière avec le logo officiel du titre quand il existe, zoom
