@@ -5,8 +5,6 @@ l'application [CloudStream](https://github.com/recloudstream/cloudstream) (versi
 **les mêmes extensions (`.cs3`)**, plus les **comptes IPTV** (Xtream Codes / M3U) et les
 **addons Stremio**.
 
-![Accueil de CloudStreamPC](docs/screenshots/home.jpg)
-
 ## Installation (Windows 10/11, 64 bits)
 
 1. Ouvrez la page [Releases](../../releases/latest).
