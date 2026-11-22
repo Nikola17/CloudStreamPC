@@ -79,7 +79,8 @@ object ExtensionHealth {
     /** A site works when a search or its first home section returns something. */
     suspend fun check(api: MainAPI): HealthResult {
         val now = System.currentTimeMillis()
-        val search = runCatching { withTimeout(30_000) { api.search("the", 1)?.items?.size ?: 0 } }
+        // Through the gate: a test search must not make the user's next search refused by the site.
+        val search = runCatching { withTimeout(30_000) { SearchGate.backgroundSearch(api, "the", yieldToUser = false)?.size ?: 0 } }
         if ((search.getOrNull() ?: 0) > 0) return HealthResult(true, now)
         val home = api.mainPage.firstOrNull()?.takeIf { api.hasMainPage }?.let { section ->
             runCatching { withTimeout(30_000) { api.getMainPage(1, MainPageRequest(section.name, section.data, section.horizontalImages))?.items?.sumOf { it.list.size } ?: 0 } }

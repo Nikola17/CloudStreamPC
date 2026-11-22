@@ -154,13 +154,21 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         addons.flatMap { addon -> addon.catalogs.filter { it.searchable }.map { addon to it } }
             .map { (addon, cat) ->
                 async {
-                    runCatching {
-                        addon.get("catalog/${cat.type}/${cat.id}/search=${IptvProvider.enc(query)}.json")
-                            .get("metas").items().mapNotNull { it.toSearchResponse(addon) }
-                    }.getOrDefault(emptyList())
+                    val path = "catalog/${cat.type}/${cat.id}/search=${IptvProvider.pathEnc(query)}.json"
+                    // Some addons (French Stream) answer an empty list to the first search of a title
+                    // while they look it up, then the results: asked again a moment later.
+                    var metas = emptyList<SearchResponse>()
+                    for (wait in SEARCH_RETRIES_MS) {
+                        if (wait > 0) kotlinx.coroutines.delay(wait)
+                        metas = runCatching { addon.get(path).get("metas").items().mapNotNull { it.toSearchResponse(addon) } }
+                            .getOrDefault(emptyList())
+                        if (metas.isNotEmpty()) break
+                    }
+                    metas
                 }
             }.awaitAll().flatten().distinctBy { it.url.substringBefore("?") }
     }
+
 
     override suspend fun load(url: String): LoadResponse? {
         val path = url.removePrefix("stremio://")
@@ -302,6 +310,9 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
     }
 
     companion object {
+        /** Waits before each try of a search catalog that answered nothing. */
+        internal var SEARCH_RETRIES_MS = listOf(0L, 1_500L, 3_000L)
+
         val presets = listOf(
             "Cinemeta (catalogues films et séries)" to "https://v3-cinemeta.strem.io/manifest.json",
             "OpenSubtitles (sous-titres)" to "https://opensubtitles-v3.strem.io/manifest.json",

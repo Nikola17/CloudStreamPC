@@ -38,8 +38,9 @@ object TasteEnricher {
             // Providers known to return suggestions first, live TV is useless here.
             val candidates = PluginManager.providers.filter { it.name != seed.apiName && it.hasMainPage }
             for (api in candidates) {
-                val match = withTimeoutOrNull(20_000) {
-                    runCatching { api.search(seed.name, 1)?.items.orEmpty() }.getOrDefault(emptyList())
+                // Long enough to wait for its turn (searches of the user go first, see SearchGate).
+                val match = withTimeoutOrNull(90_000) {
+                    runCatching { com.moncloudi.plugins.SearchGate.backgroundSearch(api, seed.name).orEmpty() }.getOrDefault(emptyList())
                 }.orEmpty().firstOrNull {
                     Recommender.normalizedTitle(it.name) == title &&
                         (family == null || Recommender.family(it.type?.name) in setOf(family, null))

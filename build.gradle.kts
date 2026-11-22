@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.moncloudi"
-version = "3.2.0"
+version = "3.2.1"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -52,6 +52,8 @@ dependencies {
     implementation("de.femtopedia.dex2jar:dex-translator:2.4.38")
 
     testImplementation(kotlin("test"))
+    // Interface tests (clicks on the real screens, without a window).
+    testImplementation("org.jetbrains.compose.ui:ui-test:1.12.0")
 }
 
 tasks.test {

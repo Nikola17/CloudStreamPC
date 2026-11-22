@@ -174,10 +174,10 @@ fun HomeScreen() {
         coroutineScope {
             // Shown as soon as a few titles are confirmed, completed dozen after dozen.
             launch {
-                runCatching { TopAvailability.available(TopRecentRanking.candidates("movie"), sources) { HomeState.topMovies = it } }
+                runCatching { TopAvailability.available(TopRecentRanking.candidates("movie"), sources, preferred = Store.settings.homeProvider) { HomeState.topMovies = it } }
             }
             launch {
-                runCatching { TopAvailability.available(TopRecentRanking.candidates("series"), sources) { HomeState.topSeries = it } }
+                runCatching { TopAvailability.available(TopRecentRanking.candidates("series"), sources, preferred = Store.settings.homeProvider) { HomeState.topSeries = it } }
             }
         }
     }
@@ -215,7 +215,7 @@ fun HomeScreen() {
         }
         scope.launch {
             val direct = if (selected in TopAvailability.eligible(listOf(selected), entry.item.type)) {
-                TopAvailability.searchIn(selected, entry.item)
+                TopAvailability.searchIn(selected, entry.item, user = true)
             } else null
             if (direct != null) {
                 nav.open(direct)
@@ -477,7 +477,8 @@ fun CategoryScreen(route: Route.Category) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("${route.page.name} · ${route.apiName}") { nav.back() }
+        // onBack by name: a trailing lambda would be the header's actions, run (so going back) as soon as it is drawn.
+        ScreenHeader("${route.page.name} · ${route.apiName}", onBack = { nav.back() })
         if (items.isEmpty() && loading) {
             LoadingBox()
         } else if (items.isEmpty()) {

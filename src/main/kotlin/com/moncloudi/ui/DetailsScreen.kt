@@ -224,8 +224,9 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
             coroutineScope {
                 others.map { other ->
                     async {
-                        withTimeoutOrNull(8_000) {
-                            runCatching { other.search(clean, 1)?.items.orEmpty() }.getOrDefault(emptyList())
+                        // Through the gate (one search at a time per site, a few seconds apart): time to wait for its turn.
+                        withTimeoutOrNull(25_000) {
+                            runCatching { com.moncloudi.plugins.SearchGate.backgroundSearch(other, clean, yieldToUser = false).orEmpty() }.getOrDefault(emptyList())
                                 .firstOrNull { cand ->
                                     com.moncloudi.core.Recommender.normalizedTitle(cand.name) == wanted &&
                                         (family == null || com.moncloudi.core.Recommender.family(cand.type?.name) in setOf(family, null))

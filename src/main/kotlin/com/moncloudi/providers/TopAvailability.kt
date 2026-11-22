@@ -1,6 +1,7 @@
 package com.moncloudi.providers
 
 import com.moncloudi.core.Recommender
+import com.moncloudi.plugins.SearchGate
 import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MovieSearchResponse
@@ -23,12 +24,12 @@ import kotlin.math.abs
 
 /**
  * Keeps in the Top 10 only the titles the user's addons can play: each candidate is searched in
- * every addon that offers its kind (films or series), under its title in the interface language,
- * then its original title, and one of the pages found must give a video link. What was found is
- * kept to open the title directly in an addon.
+ * the addons that offer its kind (films or series), under its title in the interface language,
+ * then its original title, and the page found must give a video link. What was found is kept to
+ * open the title directly in an addon.
  */
 object TopAvailability {
-    /** A Top 10 title and where it was found (one result per addon). */
+    /** A Top 10 title and where it was found (the addon with a source that answered first). */
     data class Entry(val item: TopRecentRanking.Item, val matches: List<SearchResponse>)
 
     private const val CACHE_TTL_MS = 2 * 3_600_000L
@@ -74,25 +75,35 @@ object TopAvailability {
         return year == null || item.year == null || abs(year - item.year) <= 1
     }
 
-    /** [item] in [api], or null; remembered for two hours. */
-    suspend fun searchIn(api: MainAPI, item: TopRecentRanking.Item): SearchResponse? {
+    /**
+     * [item] in [api], or null. Found: remembered two hours; not found: half an hour only (a site
+     * may also have refused the search). Searches go through [SearchGate]: in the background they
+     * leave the site to the user's searches; [user] (a click on the Top 10) goes first.
+     */
+    suspend fun searchIn(api: MainAPI, item: TopRecentRanking.Item, user: Boolean = false): SearchResponse? {
         val key = api.name + "|" + item.id
-        cache[key]?.takeIf { System.currentTimeMillis() - it.first < CACHE_TTL_MS }?.let { return it.second }
+        cache[key]?.takeIf { (now, found) -> System.currentTimeMillis() - now < if (found != null) CACHE_TTL_MS else MISS_TTL_MS }
+            ?.let { return it.second }
         val queries = listOfNotNull(item.title, item.originalTitle).distinctBy(::comparable)
         var found: SearchResponse? = null
         var answered = false
         for (query in queries) {
-            val results = withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
-                withContext(Dispatchers.IO) { runCatching { api.search(query, 1)?.items.orEmpty() }.getOrNull() }
+            val results = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (user) withTimeoutOrNull(SEARCH_TIMEOUT_MS) { SearchGate.userSearch(api, query) }
+                    else SearchGate.backgroundSearch(api, query)
+                }.getOrNull()
             } ?: continue
             answered = true
             found = results.firstOrNull { sameTitle(it, item) }
             if (found != null) break
         }
-        // A site that did not answer is asked again next time.
+        // A site that did not answer (or a search dropped for the user's) is asked again next time.
         if (answered) cache[key] = System.currentTimeMillis() to found
         return found
     }
+
+    private const val MISS_TTL_MS = 30 * 60_000L
 
     private const val LINKS_TIMEOUT_MS = 25_000L
     private const val LINKS_TTL_MS = 6 * 3_600_000L
@@ -141,33 +152,34 @@ object TopAvailability {
     }
 
     /**
-     * The first [wanted] candidates (in ranking order) found in at least one of [providers] with a
-     * real video source, searched a dozen at a time, a few searches in parallel. [onUpdate] gets
-     * the titles kept so far after each dozen, so the row can show before the end.
+     * The first [wanted] candidates (in ranking order) that one of [providers] can play. Each title
+     * is looked for in [preferred] (the addon shown on the home page) first, then in the quickest
+     * addons, and the search stops at the first one with a real video source: the sites get as
+     * few searches as possible (some refuse them when they come too often, see [SearchGate]).
+     * A few titles at a time; [onUpdate] gets the titles kept so far, so the row shows early.
      */
     suspend fun available(
         candidates: List<TopRecentRanking.Item>,
         providers: List<MainAPI>,
         wanted: Int = 10,
         checkSources: Boolean = true,
+        preferred: String? = null,
         onUpdate: (List<Entry>) -> Unit = {},
     ): List<Entry> = coroutineScope {
         val type = candidates.firstOrNull()?.type ?: return@coroutineScope emptyList()
         val sources = eligible(providers, type)
         if (sources.isEmpty()) return@coroutineScope emptyList()
-        val permits = Semaphore(6)
-        val linkPermits = Semaphore(4)
+        val linkPermits = Semaphore(3)
         val kept = mutableListOf<Entry>()
-        for (batch in candidates.chunked(12)) {
+        for (batch in candidates.chunked(4)) {
+            val ordered = sources.sortedWith(compareBy<MainAPI> { it.name != preferred }.thenBy { SearchGate.averageMs(it) })
             kept += batch.map { item ->
                 async {
-                    val matches = sources.map { api -> async { permits.withPermit { searchIn(api, item) } } }.awaitAll().filterNotNull()
-                    // One addon with a link is enough: they are tried in turn.
-                    val playable = !checkSources || matches.any { match ->
-                        val api = sources.first { it.name == match.apiName }
-                        linkPermits.withPermit { hasSource(api, match) }
+                    for (api in ordered) {
+                        val match = searchIn(api, item) ?: continue
+                        if (!checkSources || linkPermits.withPermit { hasSource(api, match) }) return@async Entry(item, listOf(match))
                     }
-                    Entry(item, matches).takeIf { playable && matches.isNotEmpty() }
+                    null
                 }
             }.awaitAll().filterNotNull()
             onUpdate(kept.take(wanted))

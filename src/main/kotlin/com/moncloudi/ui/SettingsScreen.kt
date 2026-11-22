@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.moncloudi.core.Profile
 import com.moncloudi.core.Store
 
-const val APP_VERSION = "3.2.0"
+const val APP_VERSION = "3.2.1"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable

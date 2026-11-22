@@ -249,7 +249,11 @@ menu des sous-titres du lecteur. Décalage des sous-titres dans mpv : `z` / `x`.
 **Discord** (Paramètres → Général) : affiche le titre et l'épisode en cours sur votre profil Discord ; il faut
 l'identifiant d'une application Discord créée une fois sur le portail développeur.
 
-**Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche. Par défaut, un
+**Recherche** dans tous les fournisseurs à la fois, avec filtres et historique de recherche. Certains sites
+(French-Stream) refusent une recherche qui suit de trop près la précédente : MonCloudi n'envoie qu'une recherche
+à la fois par extension, espacées de quelques secondes, et vos recherches passent avant celles qu'il fait de lui-même
+(Top 10, fiches, recommandations). Les addons Stremio qui répondent « rien » à la première recherche d'un titre
+(le temps de le chercher) sont réinterrogés un instant après. Par défaut, un
 même titre trouvé chez plusieurs fournisseurs n'apparaît qu'une fois (« 2 sources ») ; « Par fournisseur »
 affiche les résultats rangée par rangée.
 

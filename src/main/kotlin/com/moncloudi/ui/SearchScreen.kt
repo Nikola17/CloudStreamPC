@@ -135,7 +135,8 @@ fun SearchScreen() {
                 providers.map { api ->
                     async {
                         val result = try {
-                            val items = withContext(Dispatchers.IO) { api.search(query, 1)?.items.orEmpty() }
+                            // Through the gate: sites like French-Stream refuse searches sent too close together.
+                            val items = withContext(Dispatchers.IO) { com.moncloudi.plugins.SearchGate.userSearch(api, query) }
                             ProviderResult.Done(items)
                         } catch (e: CancellationException) {
                             throw e
