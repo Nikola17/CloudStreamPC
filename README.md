@@ -1,55 +1,55 @@
-# CloudStreamPC
+# MonCloudi
 
-**CloudStream pour Windows, macOS et Linux.** Une application de bureau qui reprend l'interface et les fonctions de
-l'application [CloudStream](https://github.com/recloudstream/cloudstream) (version TV) et charge
+**MonCloudi pour Windows, macOS et Linux.** Une application de bureau qui reprend l'interface et les fonctions de
+l'application [MonCloudi](https://github.com/reMonCloudi/MonCloudi) (version TV) et charge
 **les mêmes extensions (`.cs3`)**, plus les **comptes IPTV** (Xtream Codes / M3U) et les
 **addons Stremio**.
 
 ## Installation (Windows 10/11, 64 bits)
 
 1. Ouvrez la page [Releases](../../releases/latest).
-2. Téléchargez `CloudStreamPC-x.y.z-setup.exe` et lancez-le.
-   Version sans installation : `CloudStreamPC-x.y.z-portable.zip`, à décompresser, puis lancez `CloudStreamPC.exe`.
+2. Téléchargez `MonCloudi-x.y.z-setup.exe` et lancez-le.
+   Version sans installation : `MonCloudi-x.y.z-portable.zip`, à décompresser, puis lancez `MonCloudi.exe`.
 3. Si Windows affiche « Windows a protégé votre ordinateur » (l'application n'est pas signée) :
    cliquez sur **Informations complémentaires** puis **Exécuter quand même**.
 
 Java et le lecteur vidéo [mpv](https://mpv.io) sont inclus : rien d'autre à installer.
-Au premier lancement, un assistant propose d'installer les extensions CloudStream FR, d'ajouter un
+Au premier lancement, un assistant propose d'installer les extensions MonCloudi FR, d'ajouter un
 compte IPTV et le catalogue Stremio.
 
 ### Linux (64 bits)
 
-Téléchargez `CloudStreamPC-x.y.z-amd64.deb` (Ubuntu, Debian, Mint…) ou `CloudStreamPC-x.y.z-x86_64.rpm`
-(Fedora, openSUSE…) et ouvrez-le, ou `sudo apt install ./CloudStreamPC-x.y.z-amd64.deb`. Sans paquet :
-`CloudStreamPC-x.y.z-linux-x64.tar.xz`, à décompresser, puis lancez `CloudStreamPC/bin/CloudStreamPC`.
+Téléchargez `MonCloudi-x.y.z-amd64.deb` (Ubuntu, Debian, Mint…) ou `MonCloudi-x.y.z-x86_64.rpm`
+(Fedora, openSUSE…) et ouvrez-le, ou `sudo apt install ./MonCloudi-x.y.z-amd64.deb`. Sans paquet :
+`MonCloudi-x.y.z-linux-x64.tar.xz`, à décompresser, puis lancez `MonCloudi/bin/MonCloudi`.
 Installez aussi mpv : `sudo apt install mpv` (ou `sudo dnf install mpv`).
-**AppImage** (toutes distributions) : `CloudStreamPC-x.y.z-x86_64.AppImage`, puis `chmod +x` et lancez-le (mpv du système).
-**Flatpak** : le manifeste `packaging/flatpak/io.github.nikola17.CloudStreamPC.yml` (mpv inclus) se construit avec
+**AppImage** (toutes distributions) : `MonCloudi-x.y.z-x86_64.AppImage`, puis `chmod +x` et lancez-le (mpv du système).
+**Flatpak** : le manifeste `packaging/flatpak/io.github.nikola17.MonCloudi.yml` (mpv inclus) se construit avec
 `flatpak-builder` ; il n'est pas encore publié sur Flathub (soumission à faire avec votre compte).
 
 ### Windows sur ARM, winget et Scoop
 
-PC à processeur ARM (Snapdragon…) : `CloudStreamPC-x.y.z-arm64-setup.exe` quand la release en contient un
+PC à processeur ARM (Snapdragon…) : `MonCloudi-x.y.z-arm64-setup.exe` quand la release en contient un
 (la compilation ARM est tentée à chaque version ; si elle échoue, la version x64 fonctionne aussi par émulation).
-Chaque release contient `CloudStreamPC-x.y.z-manifests.zip` avec les manifestes **winget** (`winget/…`) et
-**Scoop** (`scoop/cloudstreampc.json`), déjà remplis avec les adresses et empreintes. Pour que
-`winget install Nikola17.CloudStreamPC` fonctionne, il faut les proposer une fois au dépôt
+Chaque release contient `MonCloudi-x.y.z-manifests.zip` avec les manifestes **winget** (`winget/…`) et
+**Scoop** (`scoop/MonCloudi.json`), déjà remplis avec les adresses et empreintes. Pour que
+`winget install Nikola17.MonCloudi` fonctionne, il faut les proposer une fois au dépôt
 [winget-pkgs](https://github.com/microsoft/winget-pkgs) (pull request avec votre compte GitHub, ou
-`wingetcreate submit`) ; pour Scoop, mettre `cloudstreampc.json` dans un dépôt « bucket » à vous
-(`scoop bucket add cloudstreampc https://github.com/<vous>/scoop-bucket`, puis `scoop install cloudstreampc`).
+`wingetcreate submit`) ; pour Scoop, mettre `MonCloudi.json` dans un dépôt « bucket » à vous
+(`scoop bucket add MonCloudi https://github.com/<vous>/scoop-bucket`, puis `scoop install MonCloudi`).
 
 ### macOS (Apple Silicon et Intel)
 
-Ouvrez `CloudStreamPC-x.y.z-macos-arm64.dmg` (Apple Silicon) ou `-macos-x64.dmg` (Intel) et glissez CloudStreamPC dans Applications, puis installez mpv
+Ouvrez `MonCloudi-x.y.z-macos-arm64.dmg` (Apple Silicon) ou `-macos-x64.dmg` (Intel) et glissez MonCloudi dans Applications, puis installez mpv
 (`brew install mpv`, ou l'application mpv dans Applications). L'application n'est pas notariée par Apple :
-au premier lancement, faites un clic droit sur CloudStreamPC → **Ouvrir** (ou
-`xattr -cr /Applications/CloudStreamPC.app`).
+au premier lancement, faites un clic droit sur MonCloudi → **Ouvrir** (ou
+`xattr -cr /Applications/MonCloudi.app`).
 
 ### Mises à jour
 
 Quand une nouvelle version sort, l'application le signale au démarrage (ou Paramètres → Mises à jour et
 Sauvegarde → Vérifier les mises à jour). **Installer maintenant** télécharge l'installateur de votre système,
-vérifie son empreinte SHA-256 avec celle publiée, le lance et ferme CloudStreamPC ; vos données sont conservées.
+vérifie son empreinte SHA-256 avec celle publiée, le lance et ferme MonCloudi ; vos données sont conservées.
 La version portable Windows reçoit l'installateur classique.
 
 ### Taille
@@ -81,9 +81,9 @@ vitesse de lecture.
 
 **Lecteur** : mpv avec une interface moderne ([uosc](https://github.com/tomasklaen/uosc)) : barre de
 progression avec chapitres, menus des sous-titres, de la piste audio et de la qualité, vitesse, plein écran,
-bouton « +85 s ». Par-dessus, les boutons de CloudStreamPC :
+bouton « +85 s ». Par-dessus, les boutons de MonCloudi :
 - **Passer l'intro / le récap** : pour les animés, temps de la base [AniSkip](https://aniskip.com)
-  (comme CloudStream) ; pour les autres vidéos, quand leurs chapitres indiquent l'intro ou le générique.
+  (comme MonCloudi) ; pour les autres vidéos, quand leurs chapitres indiquent l'intro ou le générique.
   Peut aussi passer l'intro automatiquement.
 - **Épisode suivant** : apparaît au générique de fin (compte à rebours de 10 s quand le générique est
   connu, sinon à la fin de l'épisode). L'épisode suivant se charge **dans la même fenêtre**, sans quitter le
@@ -197,20 +197,20 @@ A pour ouvrir, B pour revenir, X pour pause, Y pour le plein écran, gâchettes 
 dans `I18n.languages`.
 
 **Sites protégés et extensions « WebView »** : certaines extensions ont besoin d'un vrai navigateur (pages dont
-l'adresse vidéo n'apparaît qu'après leur JavaScript, vérification Cloudflare). CloudStreamPC pilote en arrière-plan
+l'adresse vidéo n'apparaît qu'après leur JavaScript, vérification Cloudflare). MonCloudi pilote en arrière-plan
 le navigateur Chromium déjà installé sur l'ordinateur (Edge, présent sur tout Windows 10/11, Chrome, Brave ou
 Chromium), sans rien télécharger de plus. Si un site exige une vérification humaine (captcha), une petite fenêtre
 s'ouvre une seule fois ; les cookies obtenus servent ensuite à toutes les extensions.
 
-**Bibliothèque comme CloudStream** : bouton « Statut » des fiches (En cours, À voir, En pause, Abandonné,
+**Bibliothèque comme MonCloudi** : bouton « Statut » des fiches (En cours, À voir, En pause, Abandonné,
 Terminé), une section par statut dans la Bibliothèque, synchronisée entre PC et envoyée à AniList, MyAnimeList,
 Simkl et Trakt (Trakt : « À voir » = sa liste de suivi).
 
-**Depuis le téléphone** : Paramètres → Mises à jour et Sauvegarde → Importer depuis CloudStream (Android) lit une
+**Depuis le téléphone** : Paramètres → Mises à jour et Sauvegarde → Importer depuis MonCloudi (Android) lit une
 sauvegarde de l'application Android (.json) : bibliothèque et statuts, favoris, titres en cours et dépôts
 d'extensions.
 
-**En arrière-plan** : fermer la fenêtre garde CloudStreamPC dans la zone de notification (nouveaux épisodes,
+**En arrière-plan** : fermer la fenêtre garde MonCloudi dans la zone de notification (nouveaux épisodes,
 téléchargements) ; option « Lancer au démarrage de l'ordinateur », discrètement.
 
 **Suivi** (Paramètres → Comptes et Sécurité → Suivi et synchronisation) : les épisodes et films vus jusqu'au
@@ -230,7 +230,7 @@ Au premier torrent, Windows peut demander d'autoriser TorrServer sur le réseau 
 
 **Caster** (bouton de la fiche) : envoie la meilleure source à un **Chromecast** ou à une **TV DLNA** du réseau,
 avec pause et arrêt depuis la barre en bas de l'application. L'application relaie la vidéo avec les en-têtes que
-demandent les hébergeurs (et le flux des torrents) ; Windows peut demander d'autoriser CloudStreamPC sur le réseau privé.
+demandent les hébergeurs (et le flux des torrents) ; Windows peut demander d'autoriser MonCloudi sur le réseau privé.
 
 **Sous-titres en ligne** : les sous-titres d'OpenSubtitles dans vos langues (Paramètres → Lecteur) sont ajoutés au
 menu des sous-titres du lecteur. Décalage des sous-titres dans mpv : `z` / `x`.
@@ -268,15 +268,15 @@ Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisse
   ou automatique), mise à jour des extensions, journaux, configuration initiale.
 - *Comptes et Sécurité* : **profils** (favoris, historique et progression séparés, code par profil,
   « Qui regarde ? » au démarrage), comptes IPTV, addons Stremio, verrouillage de l'application par code.
-- *Extensions* : dépôts et extensions CloudStream (installation, mise à jour, désinstallation) et addons Stremio.
+- *Extensions* : dépôts et extensions MonCloudi (installation, mise à jour, désinstallation) et addons Stremio.
 
 Raccourcis : flèches et `Entrée` pour se déplacer et ouvrir ; `Échap`, `Alt+←` ou le bouton « précédent » de la
 souris pour revenir en arrière.
 Dans mpv : `Espace` pause, `F` plein écran, `←`/`→` ±5 s, `↑`/`↓` ±1 min, `J` sous-titres, `#` piste audio,
 `Entrée` « Passer l'intro » / « Épisode suivant » quand le bouton est affiché, `N` épisode suivant, `Q` quitter.
 
-Les données sont dans `%APPDATA%\CloudStreamPC` (macOS : `~/Library/Application Support/CloudStreamPC`,
-Linux : `~/.local/share/CloudStreamPC`) ; les téléchargements dans `Vidéos\CloudStreamPC` (macOS : `Films`).
+Les données sont dans `%APPDATA%\MonCloudi` (macOS : `~/Library/Application Support/MonCloudi`,
+Linux : `~/.local/share/MonCloudi`) ; les téléchargements dans `Vidéos\MonCloudi` (macOS : `Films`).
 
 **En cas de problème** : Paramètres → Mises à jour et Sauvegarde → **Signaler un problème** ouvre un
 signalement GitHub prérempli (version, système, fin du journal). Si l'application plante, une fenêtre propose
@@ -318,7 +318,7 @@ de signature avec un certificat jetable (sans publier de version).
 - La diffusion vers une TV DLNA dépend des formats que la TV accepte (les flux HLS sont mieux pris en charge par
   Chromecast).
 - Les comptes AniList, MyAnimeList, Simkl et Trakt nécessitent un identifiant d'application que chaque
-  utilisateur crée une fois sur le service (CloudStreamPC n'a pas de compte développeur commun).
+  utilisateur crée une fois sur le service (MonCloudi n'a pas de compte développeur commun).
 - Les extensions qui utilisent des fonctions propres à Android (réglages internes, ressources) peuvent
   ne pas fonctionner entièrement.
 - Le DNS over HTTPS s'applique aux extensions et au direct (relais), pas aux films lus directement par mpv.
@@ -347,14 +347,14 @@ de signature avec un certificat jetable (sans publier de version).
 
 ## Comment ça marche
 
-- L'API des extensions est la bibliothèque officielle de CloudStream (module `library`, compilé pour la
+- L'API des extensions est la bibliothèque officielle de MonCloudi (module `library`, compilé pour la
   JVM), récupérée via JitPack.
 - Une extension `.cs3` contient du bytecode Android (DEX). À l'installation, il est converti une fois pour
   toutes en classes Java avec [dex2jar](https://github.com/ThexXTURBOXx/dex2jar), puis chargé comme sur
   Android (`manifest.json` → `pluginClassName` → `load()`).
 - L'IPTV et Stremio sont des fournisseurs intégrés qui utilisent la même API que les extensions.
 - La position de lecture est lue en direct dans mpv par son IPC (pipe nommé sous Windows) ; la même
-  connexion sert au script du lecteur (`app-resources/common/mpv/scripts/cloudstreampc.lua`) pour
+  connexion sert au script du lecteur (`app-resources/common/mpv/scripts/MonCloudi.lua`) pour
   demander l'épisode suivant, que l'application charge dans la fenêtre ouverte.
 - Les bandes-annonces de l'accueil sont décodées par mpv en images brutes, affichées dans l'interface :
   le texte de la bannière reste par-dessus.
@@ -365,7 +365,7 @@ de signature avec un certificat jetable (sans publier de version).
 délai d'animation borné, voir `VERSION.txt`), [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT),
 téléchargés au premier besoin : [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) et [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
 [JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), [Jamepad](https://github.com/libgdx/Jamepad) et SDL2 (Apache-2.0 / zlib), polices Outfit et Inter (SIL OFL), bibliothèque
-CloudStream (GPL-3.0).
+MonCloudi (GPL-3.0).
 
 ## Compiler soi-même
 
@@ -384,4 +384,4 @@ Chaque envoi sur `main` compile les installateurs Windows avec GitHub Actions et
 
 ## Licence
 
-GPL-3.0, comme CloudStream.
+GPL-3.0, comme MonCloudi.
