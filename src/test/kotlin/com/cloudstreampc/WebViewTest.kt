@@ -67,6 +67,7 @@ class WebViewTest {
         val (found, _) = WebViewResolver(Regex("""\.m3u8"""), timeout = 15_000).resolveUsingWebView("$base/event")
         val request = assertNotNull(found, "le flux demandé par le lecteur dans son cadre est vu")
         assertEquals("token", request.url.queryParameter("s"))
+        assertEquals(com.lagradost.cloudstream3.USER_AGENT, request.header("user-agent"))
     }
 
     @Test

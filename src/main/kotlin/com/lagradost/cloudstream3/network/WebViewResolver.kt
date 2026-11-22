@@ -20,7 +20,7 @@ import java.util.Collections
  *
  * @param interceptUrl stops the page when a request matches.
  * @param additionalUrls other matching requests are collected too.
- * @param userAgent unused: the browser's own identity is what sites (Cloudflare) expect.
+ * @param userAgent applied via DevTools User-Agent override when set, so UA-bound stream tokens match the extension & player.
  * @param useOkhttp unused: the browser loads everything itself.
  * @param script JavaScript run once the page is loaded, its result given to [scriptCallback].
  */
@@ -84,6 +84,7 @@ class WebViewResolver(
                 url,
                 headers = request.headers.toMap(),
                 referer = request.header("referer"),
+                userAgentOverride = request.header("user-agent") ?: userAgent,
                 script = script,
                 onScript = scriptCallback,
                 timeoutMs = timeout,
