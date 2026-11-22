@@ -37,6 +37,8 @@ class StremioAddon(val manifestUrl: String, val manifest: JsonNode) {
     val base = manifestUrl.substringBefore("/manifest.json").trimEnd('/')
     val id: String = manifest.str("id") ?: manifestUrl
     val name: String = manifest.str("name") ?: id
+    /** "The Movie Database Addon": its search catalog answers even when its configuration hides it. */
+    val isTmdb: Boolean get() = id == "tmdb-addon"
 
     private val resources: List<Pair<String, JsonNode?>> = manifest.get("resources").items().map {
         if (it.isTextual) it.asText() to null else (it.str("name") ?: "") to it
@@ -85,7 +87,11 @@ class StremioAddon(val manifestUrl: String, val manifest: JsonNode) {
  * All Stremio addons as one CloudStream provider: catalogs become home rows,
  * metadata gives the details page, and every stream addon is asked for links.
  */
-class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
+class StremioProvider(
+    private val addons: List<StremioAddon>,
+    /** Searched and asked for details pages, but no home rows nor streams: Cinemeta when it is not in the list. */
+    private val searchOnly: List<StremioAddon> = emptyList(),
+) : MainAPI() {
     override var name = "Stremio"
     override var mainUrl = "stremio://"
     override var lang = "fr"
@@ -115,7 +121,7 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         else -> TvType.Others
     }
 
-    private fun addon(id: String) = addons.firstOrNull { it.id == id }
+    private fun addon(id: String) = addons.firstOrNull { it.id == id } ?: searchOnly.firstOrNull { it.id == id }
 
     /** Whether one of the addons gives streams of [type] ("movie", "series") for IMDb ids: a catalog alone has no video. */
     fun canStream(type: String) = addons.any { it.supports("stream", type, "tt0000000") }
@@ -150,23 +156,50 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         )
     }
 
+    /** A catalog asked for a search. */
+    private data class SearchCatalog(val addon: StremioAddon, val type: String, val id: String)
+
+    /**
+     * Where a search is asked, best first: the addons' own search catalogs; the TMDB addon's, even
+     * when its configuration turned search off (its "tmdb.search" catalog answers anyway, with
+     * titles in the configured language); then Cinemeta, which the Stremio app always has.
+     */
+    private fun searchCatalogs(): List<SearchCatalog> {
+        val declared = addons.flatMap { addon -> addon.catalogs.filter { it.searchable }.map { SearchCatalog(addon, it.type, it.id) } }
+        val tmdb = addons.filter { it.isTmdb && it.catalogs.none { cat -> cat.searchable } }
+            .flatMap { addon -> listOf("movie", "series").map { SearchCatalog(addon, it, "tmdb.search") } }
+        val cinemeta = searchOnly.flatMap { addon -> addon.catalogs.filter { it.searchable }.map { SearchCatalog(addon, it.type, it.id) } }
+        return declared + tmdb + cinemeta
+    }
+
     override suspend fun search(query: String): List<SearchResponse> = coroutineScope {
-        addons.flatMap { addon -> addon.catalogs.filter { it.searchable }.map { addon to it } }
-            .map { (addon, cat) ->
-                async {
-                    val path = "catalog/${cat.type}/${cat.id}/search=${IptvProvider.pathEnc(query)}.json"
-                    // Some addons (French Stream) answer an empty list to the first search of a title
-                    // while they look it up, then the results: asked again a moment later.
-                    var metas = emptyList<SearchResponse>()
-                    for (wait in SEARCH_RETRIES_MS) {
-                        if (wait > 0) kotlinx.coroutines.delay(wait)
-                        metas = runCatching { addon.get(path).get("metas").items().mapNotNull { it.toSearchResponse(addon) } }
-                            .getOrDefault(emptyList())
-                        if (metas.isNotEmpty()) break
-                    }
-                    metas
+        val answers = searchCatalogs().map { cat ->
+            async {
+                val path = "catalog/${cat.type}/${cat.id}/search=${IptvProvider.pathEnc(query)}.json"
+                // Some addons (French Stream) answer an empty list to the first search of a title
+                // while they look it up, then the results: asked again a moment later.
+                var metas = emptyList<JsonNode>()
+                for (wait in SEARCH_RETRIES_MS) {
+                    if (wait > 0) kotlinx.coroutines.delay(wait)
+                    metas = runCatching { cat.addon.get(path).get("metas").items() }.getOrDefault(emptyList())
+                    if (metas.isNotEmpty()) break
                 }
-            }.awaitAll().flatten().distinctBy { it.url.substringBefore("?") }
+                cat to metas
+            }
+        }.awaitAll()
+        // The same title from several addons once: same page, or same IMDb id (the TMDB addon gives
+        // it next to its own id). The first addon wins (French titles of TMDB before Cinemeta's).
+        val urls = HashSet<String>()
+        val imdbIds = HashSet<String>()
+        answers.flatMap { (cat, metas) ->
+            metas.mapNotNull { node ->
+                val response = node.toSearchResponse(cat.addon) ?: return@mapNotNull null
+                val imdb = (node.str("imdb_id") ?: node.str("id"))?.takeIf { it.startsWith("tt") }
+                if (!urls.add(response.url.substringBefore("?"))) return@mapNotNull null
+                if (imdb != null && !imdbIds.add(imdb)) return@mapNotNull null
+                response
+            }
+        }
     }
 
 
@@ -175,7 +208,7 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         val type = path.substringBefore("/")
         val id = IptvProvider.dec(path.substringAfter("/").substringBefore("?"))
         val preferred = addon(IptvProvider.dec(url.substringAfter("addon=", "")))
-        val sources = listOfNotNull(preferred) + addons.filter { it != preferred }
+        val sources = listOfNotNull(preferred) + (addons + searchOnly).filter { it != preferred }
         val meta = sources.filter { it.supports("meta", type, id) }.firstNotNullOfOrNull { addon ->
             runCatching { addon.get("meta/$type/${IptvProvider.enc(id)}.json").get("meta") }.getOrNull()?.takeIf { !it.isNull }
         } ?: error("Aucun addon ne fournit la fiche de ce titre (ajoutez Cinemeta).")
@@ -195,7 +228,7 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
             tvType(type) == TvType.Live -> newLiveStreamLoadResponse(title, url, "$type|$id") {
                 posterUrl = poster; plot = description
             }
-            videos.isEmpty() || type == "movie" -> newMovieLoadResponse(title, url, tvType(type), "$type|$id") {
+            videos.isEmpty() || type == "movie" -> newMovieLoadResponse(title, url, tvType(type), "$type|${streamId(meta, id)}") {
                 posterUrl = poster; backgroundPosterUrl = background; plot = description
                 this.year = year; tags = genres; score = rating; duration = runtime
                 recommendations = recs
@@ -220,6 +253,10 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
             }
         }
     }
+
+    /** Id to ask the stream addons for: the IMDb one when the meta gives it ("tmdb:…" pages of the TMDB addon). */
+    private fun streamId(meta: JsonNode, id: String): String =
+        meta.str("imdb_id")?.takeIf { !id.startsWith("tt") && Regex("tt\\d+").matches(it) } ?: id
 
     /** Titles of the same genre from a catalog that can filter by genre (e.g. Cinemeta). */
     private suspend fun similar(type: String, id: String, genres: List<String>, preferred: StremioAddon?): List<SearchResponse> {
@@ -313,6 +350,8 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
         /** Waits before each try of a search catalog that answered nothing. */
         internal var SEARCH_RETRIES_MS = listOf(0L, 1_500L, 3_000L)
 
+        const val CINEMETA_ID = "com.linvo.cinemeta"
+
         val presets = listOf(
             "Cinemeta (catalogues films et séries)" to "https://v3-cinemeta.strem.io/manifest.json",
             "OpenSubtitles (sous-titres)" to "https://opensubtitles-v3.strem.io/manifest.json",
@@ -328,7 +367,14 @@ class StremioProvider(private val addons: List<StremioAddon>) : MainAPI() {
                     }
                 }.awaitAll().filterNotNull()
             }
-            return if (addons.isEmpty()) null else StremioProvider(addons)
+            if (addons.isEmpty()) return null
+            // Like the Stremio app, which always has Cinemeta: its search, even when not in the list.
+            val cinemeta = if (addons.none { it.id == CINEMETA_ID }) {
+                runCatching { StremioAddon.fetch("${Cinemeta.base}/manifest.json") }
+                    .onFailure { Logger.info("Cinemeta indisponible pour la recherche Stremio : ${it.message}") }
+                    .getOrNull()
+            } else null
+            return StremioProvider(addons, listOfNotNull(cinemeta))
         }
     }
 }

@@ -267,6 +267,10 @@ chaînes TV (guide des programmes), films et séries, rangés par catégorie, et
 **Stremio** (Paramètres → Extensions → Addons Stremio) : ajout d'addons par leur lien `manifest.json`
 (catalogues sur l'accueil, recherche, fiches, flux, sous-titres). Préréglages : Cinemeta, OpenSubtitles.
 Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisseurs.
+La recherche Stremio interroge les catalogues de recherche de vos addons, celui de l'addon **TMDB** (titres en
+français, même si sa configuration a désactivé la recherche) et **Cinemeta**, comme l'application Stremio qui l'a
+toujours (même s'il n'est pas dans votre liste, sans ajouter ses rangées à l'accueil). Un même titre n'apparaît
+qu'une fois (même identifiant IMDb) ; les films de TMDB demandent leurs sources sous leur identifiant IMDb.
 
 **Paramètres** (mêmes rubriques que l'application Android) :
 - *Général* : langue (français, anglais), dossier et nombre de téléchargements, manette, Discord, nouveaux épisodes et notifications, **DNS over HTTPS** (« Automatique » par défaut : Cloudflare, sinon le DNS du système, pour passer les blocages des FAI)

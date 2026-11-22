@@ -101,6 +101,52 @@ class SearchGateTest {
     }
 
     @Test
+    fun stremioSearchAlsoAsksTmdbAndCinemeta(): Unit = runBlocking {
+        val asked = Collections.synchronizedList(mutableListOf<String>())
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val path = exchange.requestURI.rawPath
+            asked += path
+            val body = when {
+                path.startsWith("/fs/catalog/movie/fs-search/") -> """{"metas":[{"id":"fs:42","type":"movie","name":"Film seulement sur French Stream"}]}"""
+                path.startsWith("/tmdb/catalog/movie/tmdb.search/") ->
+                    """{"metas":[{"id":"tmdb:693134","imdb_id":"tt15239678","type":"movie","name":"Dune : Deuxième partie","releaseInfo":"2024"}]}"""
+                path.startsWith("/tmdb/meta/movie/tmdb") -> """{"meta":{"id":"tmdb:693134","imdb_id":"tt15239678","type":"movie","name":"Dune : Deuxième partie"}}"""
+                path.startsWith("/cinemeta/catalog/movie/top/") -> """{"metas":[
+                    {"id":"tt15239678","type":"movie","name":"Dune: Part Two","releaseInfo":"2024"},
+                    {"id":"tt1160419","type":"movie","name":"Dune","releaseInfo":"2021"}]}"""
+                else -> """{"metas":[]}"""
+            }.toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            StremioProvider.SEARCH_RETRIES_MS = listOf(0L)
+            val base = "http://127.0.0.1:${server.address.port}"
+            fun addon(path: String, json: String) = StremioAddon("$base/$path/manifest.json", mapper.readTree(json))
+            val fs = addon("fs", """{"id":"fs","resources":["catalog","meta"],"types":["movie"],
+                "catalogs":[{"type":"movie","id":"fs-search","name":"Recherche","extra":[{"name":"search","isRequired":true}]}]}""")
+            // Configured with "searchEnabled": false: no catalog at all in its manifest.
+            val tmdb = addon("tmdb", """{"id":"tmdb-addon","resources":["catalog","meta"],"types":["movie","series"],"idPrefixes":["tmdb:"],"catalogs":[]}""")
+            val cinemeta = addon("cinemeta", """{"id":"com.linvo.cinemeta","resources":["catalog","meta"],"types":["movie","series"],"idPrefixes":["tt"],
+                "catalogs":[{"type":"movie","id":"top","name":"Populaires","extra":[{"name":"search"}]}]}""")
+            val provider = StremioProvider(listOf(fs, tmdb), searchOnly = listOf(cinemeta))
+            val names = provider.search("dune").map { it.name }
+            // French Stream, then TMDB (French title), then Cinemeta without what TMDB already gave (same IMDb id).
+            assertEquals(listOf("Film seulement sur French Stream", "Dune : Deuxième partie", "Dune"), names)
+            assertTrue(asked.any { it.startsWith("/tmdb/catalog/series/tmdb.search/search=dune") })
+            // Cinemeta gives no home rows (it was not added by the user).
+            assertTrue(provider.mainPage.none { "Populaires" in it.name })
+            // A TMDB film asks the stream addons under its IMDb id.
+            val page = provider.load(provider.search("dune")[1].url) as com.lagradost.cloudstream3.MovieLoadResponse
+            assertEquals("movie|tt15239678", page.dataUrl)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
     fun stremioSearchIsAskedAgainWhenTheAddonFirstAnswersNothing(): Unit = runBlocking {
         val calls = AtomicInteger()
         val paths = Collections.synchronizedList(mutableListOf<String>())
