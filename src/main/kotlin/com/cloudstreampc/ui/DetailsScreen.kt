@@ -78,14 +78,22 @@ import com.lagradost.cloudstream3.TorrentLoadResponse
 import com.lagradost.cloudstream3.TvSeriesLoadResponse
 import com.lagradost.cloudstream3.TvType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Desktop
 import java.net.URI
 
-/** Load responses already fetched this session, so going back is instant. */
+/** Load responses already fetched this session (bounded LRU), so going back is instant without leaking memory. */
 object DetailsCache {
-    private val cache = java.util.Collections.synchronizedMap(mutableMapOf<String, LoadResponse>())
+    private val cache = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, LoadResponse>(150, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LoadResponse>?) = size > 150
+        }
+    )
 
     fun cached(apiName: String, url: String): LoadResponse? = cache["$apiName|$url"]
 
@@ -200,9 +208,34 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
     // Everything playable from this page, in order, so the next episode can follow.
     val queue: List<Playable> = PlayQueue.build(data, episodes)
 
-    // Cinemeta (and TMDB with a key): rating, director, cast photos, similar titles, episode pictures.
+    // Cinemeta / Jikan (zero-config) and optional TMDB: rating, director, cast photos, relevant similar titles, episode pictures.
     var enriched by remember(data) { mutableStateOf<com.cloudstreampc.providers.Enriched?>(null) }
     LaunchedEffect(data) { enriched = runCatching { com.cloudstreampc.providers.Enrichment.of(data) }.getOrNull() }
+    // Cross-addon synchronization: find the same movie/series in other installed addons (CloudStream / Stremio / IPTV).
+    var crossMatches by remember(data) { mutableStateOf<List<com.lagradost.cloudstream3.SearchResponse>>(emptyList()) }
+    LaunchedEffect(data) {
+        if (data is LiveStreamLoadResponse) return@LaunchedEffect
+        val others = visibleProviders().filter { it.name != api.name }
+        if (others.isEmpty()) return@LaunchedEffect
+        val clean = com.cloudstreampc.providers.Cinemeta.cleanTitle(data.name)
+        val wanted = com.cloudstreampc.core.Recommender.normalizedTitle(clean)
+        val family = com.cloudstreampc.core.Recommender.family(data.type.name)
+        crossMatches = withContext(Dispatchers.IO) {
+            coroutineScope {
+                others.map { other ->
+                    async {
+                        withTimeoutOrNull(8_000) {
+                            runCatching { other.search(clean, 1)?.items.orEmpty() }.getOrDefault(emptyList())
+                                .firstOrNull { cand ->
+                                    com.cloudstreampc.core.Recommender.normalizedTitle(cand.name) == wanted &&
+                                        (family == null || com.cloudstreampc.core.Recommender.family(cand.type?.name) in setOf(family, null))
+                                }
+                        }
+                    }
+                }.awaitAll().filterNotNull()
+            }
+        }
+    }
     var showCollections by remember(data) { mutableStateOf(false) }
     if (showCollections) CollectionsDialog(saved) { showCollections = false }
     var castIndex by remember(data) { mutableStateOf<Int?>(null) }
@@ -378,6 +411,23 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                                 Text("Site")
                             }
                         }
+                        if (crossMatches.isNotEmpty()) {
+                            Row(
+                                Modifier.padding(top = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("Aussi dans vos addons :", color = CsColors.TextMuted, fontSize = 13.sp)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    crossMatches.forEach { match ->
+                                        AssistChip(
+                                            onClick = { nav.open(match) },
+                                            label = { Text(match.apiName, fontSize = 12.sp) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         if (data is TorrentLoadResponse && !com.cloudstreampc.player.TorrentEngine.available) {
                             Text("Moteur torrent indisponible : activez les torrents dans Paramètres → Lecteur.", color = CsColors.Error, modifier = Modifier.padding(top = 8.dp))
                         }
@@ -453,23 +503,37 @@ private fun DetailsContent(api: MainAPI, data: LoadResponse) {
                 }
             }
         }
-        data.recommendations?.takeIf { it.isNotEmpty() }?.let { recs ->
-            item {
-                Spacer(Modifier.height(24.dp))
-                PosterRow("Recommandations", recs, onOpen = nav::open)
-            }
-        }
         enriched?.similar?.takeIf { it.isNotEmpty() }?.let { similar ->
             item(key = "similar") {
-                MediaRow("Titres similaires") {
+                Spacer(Modifier.height(24.dp))
+                MediaRow("Similaires à « ${com.cloudstreampc.providers.Cinemeta.cleanTitle(data.name)} »") {
                     items(similar.size, key = { "similar:$it" }) { i ->
                         val title = similar[i]
-                        PosterCard(title.title, title.posterUrl, subtitle = title.year?.toString()) {
+                        val sub = listOfNotNull(
+                            title.year?.toString(),
+                            title.genres.take(2).joinToString(" · ").ifBlank { null },
+                        ).joinToString(" · ").ifBlank { null }
+                        PosterCard(
+                            title = title.title,
+                            posterUrl = title.posterUrl,
+                            score = title.rating?.takeIf { it > 0 }?.let { "%.1f".format(it).removeSuffix(",0").removeSuffix(".0") },
+                            subtitle = sub,
+                        ) {
                             SearchState.query = title.title
                             SearchState.pendingSearch = true
                             nav.select(Tab.Search)
                         }
                     }
+                }
+            }
+        }
+        data.recommendations?.takeIf { it.isNotEmpty() }?.let { recs ->
+            val shownSimilar = enriched?.similar?.map { com.cloudstreampc.core.Recommender.normalizedTitle(it.title) }.orEmpty().toSet()
+            val uniqueRecs = recs.filter { com.cloudstreampc.core.Recommender.normalizedTitle(it.name) !in shownSimilar }
+            if (uniqueRecs.isNotEmpty()) {
+                item(key = "provider-recs") {
+                    Spacer(Modifier.height(16.dp))
+                    PosterRow("Recommandations · ${api.name}", uniqueRecs, onOpen = nav::open)
                 }
             }
         }

@@ -10,23 +10,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,23 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
-import com.cloudstreampc.core.RepositoryEntry
 import com.cloudstreampc.core.Store
-import com.cloudstreampc.core.StremioAddonEntry
 import com.cloudstreampc.core.Updates
-import com.cloudstreampc.plugins.PluginManager
-import com.cloudstreampc.plugins.RepositoryManager
-import com.cloudstreampc.providers.BuiltinProviders
-import com.cloudstreampc.providers.StremioProvider
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/** Repository proposed on first launch; it can be removed in Extensions. */
-val defaultRepository = RepositoryEntry(
-    "CloudStream FR",
-    "https://raw.githubusercontent.com/Nikola17/cloudstream-frenchstream/main/repo.json",
-)
 
 /** Code lock, then "Qui regarde ?", then the app (with first-launch setup and update notice). */
 @Composable
@@ -62,7 +42,7 @@ fun StartupGate(nav: Navigator) {
     CloudStreamTheme { androidx.compose.runtime.CompositionLocalProvider(LocalNavigator provides nav) {
         when {
             !unlocked -> Box(Modifier.fillMaxSize().background(CsColors.Background)) {
-                PinCheckDialog(Store.settings.appPin!!, "CloudStreamPC est verrouillé", onDismiss = null) { unlocked = true }
+                PinCheckDialog(Store.settings.appPin!!, "MonCloudi est verrouillé", onDismiss = null) { unlocked = true }
             }
             !profileChosen -> WhoIsWatching { profileChosen = true }
             else -> {
@@ -108,76 +88,57 @@ private fun WhoIsWatching(onDone: () -> Unit) {
     }
 }
 
-/** First launch (or "Refaire la configuration initiale"), like the app's setup screens. */
+/**
+ * Clean first-launch welcome: no pre-installed or pre-added repositories/addons,
+ * just like the official CloudStream app. Users add their own CloudStream, Stremio, or IPTV addons.
+ */
 @Composable
 private fun SetupDialog() {
     val nav = LocalNavigator.current
-    val scope = rememberCoroutineScope()
-    var installing by remember { mutableStateOf(false) }
-    var installed by remember { mutableStateOf(false) }
-    var stremioAdded by remember { mutableStateOf(Store.settings.stremioAddons.isNotEmpty()) }
     fun finish() = Store.updateSettings { it.copy(firstLaunchDone = true) }
 
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Bienvenue dans CloudStreamPC", fontWeight = FontWeight.SemiBold) },
+        title = { Text("Bienvenue dans MonCloudi", fontWeight = FontWeight.SemiBold) },
         text = {
-            Column(Modifier.width(560.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Choisissez vos sources de contenu. Tout reste modifiable dans les paramètres.", color = CsColors.TextMuted)
-                SetupStep(
-                    "Extensions CloudStream FR",
-                    "French-Stream, Movix, French-Manga, FSTV",
-                    done = installed, busy = installing,
-                ) {
-                    installing = true
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                if (Store.settings.repositories.none { it.url == defaultRepository.url }) {
-                                    Store.updateSettings { it.copy(repositories = it.repositories + defaultRepository) }
-                                }
-                                RepositoryManager.fetchPlugins(defaultRepository.url).forEach { PluginManager.install(it, defaultRepository.url) }
-                            }
-                        }.onFailure { nav.toast("Installation impossible : ${it.message}") }
-                        installing = false
-                        installed = true
-                        HomeState.loadedFor = null
-                    }
-                }
-                SetupStep("Compte IPTV", "Xtream Codes ou playlist M3U : TV en direct, films et séries", done = Store.settings.iptvAccounts.isNotEmpty()) {
-                    finish()
-                    nav.select(Tab.Settings)
-                    nav.push(Route.Settings(SettingsPage.Iptv))
-                }
-                SetupStep("Catalogue Stremio (Cinemeta)", "Films et séries populaires, fiches détaillées", done = stremioAdded) {
-                    val url = StremioProvider.presets.first().second
-                    if (Store.settings.stremioAddons.none { it.manifestUrl == url }) {
-                        Store.updateSettings { it.copy(stremioAddons = it.stremioAddons + StremioAddonEntry(url, "Cinemeta")) }
-                        scope.launch { BuiltinProviders.sync() }
-                    }
-                    stremioAdded = true
-                }
+            Column(Modifier.width(540.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "MonCloudi démarre vierge, sans aucun addon préinstallé. Ajoutez vos propres sources dans le centre Addons unifié :",
+                    color = CsColors.TextMuted,
+                )
+                WelcomeStep(
+                    "Extensions CloudStream",
+                    "Ajoutez vos dépôts (repo.json ou cloudstreamrepo://) comme sur CloudStream Android",
+                )
+                WelcomeStep(
+                    "Addons Stremio",
+                    "Ajoutez vos liens manifest.json pour vos catalogues, flux et sous-titres",
+                )
+                WelcomeStep(
+                    "Comptes IPTV",
+                    "Connectez votre abonnement Xtream Codes ou playlist M3U (chaînes TV, films et séries)",
+                )
             }
         },
-        confirmButton = { Button(onClick = { finish() }, enabled = !installing) { Text("Terminer") } },
+        confirmButton = {
+            Button(onClick = {
+                finish()
+                nav.select(Tab.Addons)
+            }) { Text("Configurer mes addons") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = { finish() }) { Text("Plus tard") }
+        },
     )
 }
 
 @Composable
-private fun SetupStep(title: String, subtitle: String, done: Boolean, busy: Boolean = false, onClick: () -> Unit) {
-    Row(
+private fun WelcomeStep(title: String, subtitle: String) {
+    Column(
         Modifier.clip(RoundedCornerShape(12.dp)).background(CsColors.SurfaceHigh).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            Text(subtitle, color = CsColors.TextMuted, fontSize = 13.sp)
-        }
-        when {
-            busy -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            done -> Icon(Icons.Default.Check, "Fait", tint = CsColors.Good)
-            else -> OutlinedButton(onClick = onClick) { Text("Ajouter") }
-        }
+        Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(subtitle, color = CsColors.TextMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
 

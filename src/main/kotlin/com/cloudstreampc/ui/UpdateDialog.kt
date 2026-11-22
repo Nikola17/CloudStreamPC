@@ -38,7 +38,7 @@ fun UpdateDialog(release: Updates.Release, onDismiss: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (progress == null) onDismiss() },
-        title = { Text("CloudStreamPC ${release.version} est disponible") },
+        title = { Text("MonCloudi ${release.version} est disponible") },
         text = {
             Column {
                 Text(

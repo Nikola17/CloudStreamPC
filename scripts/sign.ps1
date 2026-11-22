@@ -1,4 +1,4 @@
-# Signs Windows files (Authenticode, SHA-256, timestamped).
+﻿# Signs Windows files (Authenticode, SHA-256, timestamped).
 # Uses, in this order:
 #   1. Azure Key Vault (AZURE_KEY_VAULT_URI, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_CERT_NAME)
 #   2. A PFX certificate (WINDOWS_CERTIFICATE_PFX = base64 of the .pfx, WINDOWS_CERTIFICATE_PASSWORD)
@@ -10,8 +10,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $timestamp = "http://timestamp.digicert.com"
-$description = "CloudStreamPC"
-$url = "https://github.com/Nikola17/CloudStreamPC"
+$description = "MonCloudi"
+$url = "https://github.com/Nikola17/MonCloudi"
 
 function Find-SignTool {
     $tool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |

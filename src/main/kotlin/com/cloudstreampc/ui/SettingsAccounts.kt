@@ -83,7 +83,7 @@ fun UpdateSettings() {
             val release = runCatching { withContext(Dispatchers.IO) { Updates.check(APP_VERSION) } }.getOrElse {
                 nav.toast("Impossible de vérifier : ${it.message}"); return@launch
             }
-            if (release == null) nav.toast("CloudStreamPC est à jour") else update = release
+            if (release == null) nav.toast("MonCloudi est à jour") else update = release
         }
     }
     SettingsSwitch("Afficher les mises à jour de l'application", "Vérifie au démarrage", s.checkAppUpdates) { v ->
@@ -118,7 +118,7 @@ fun UpdateSettings() {
         }
     }
     SettingsItem("Restaurer une sauvegarde", "Remplace les données actuelles") {
-        val chooser = JFileChooser(Backup.folder).apply { fileFilter = FileNameExtensionFilter("Sauvegarde CloudStreamPC (.zip)", "zip") }
+        val chooser = JFileChooser(Backup.folder).apply { fileFilter = FileNameExtensionFilter("Sauvegarde MonCloudi (.zip)", "zip") }
         if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             scope.launch {
                 runCatching {
@@ -183,18 +183,14 @@ fun AccountSettings() {
         Store.updateSettings { it.copy(askProfileAtStartup = v) }
     }
     SettingsItem(
-        "Comptes IPTV",
-        if (s.iptvAccounts.isEmpty()) "Ajouter un abonnement Xtream Codes ou une playlist M3U" else s.iptvAccounts.joinToString(", ") { it.name },
-    ) { nav.push(Route.Settings(SettingsPage.Iptv)) }
+        "Addons (CloudStream, Stremio, IPTV)",
+        "${s.installedPlugins.size} CloudStream · ${s.stremioAddons.size} Stremio · ${s.iptvAccounts.size} IPTV",
+    ) { nav.select(Tab.Addons) }
     SettingsItem(
         "Suivi et synchronisation",
         com.cloudstreampc.sync.Trackers.connected().joinToString(", ") { it.name }.ifBlank { "AniList, MyAnimeList, Simkl, Trakt, synchronisation entre PC" } +
             if (s.syncDir != null) " · dossier partagé" else "",
     ) { nav.push(Route.Settings(SettingsPage.Tracking)) }
-    SettingsItem(
-        "Addons Stremio",
-        if (s.stremioAddons.isEmpty()) "Catalogues, flux et sous-titres des addons Stremio" else "${s.stremioAddons.size} addon(s)",
-    ) { nav.push(Route.Settings(SettingsPage.Extensions)) }
 
     SettingsCategory("Sécurité")
     SettingsItem(

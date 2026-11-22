@@ -61,7 +61,7 @@ fun GeneralSettings() {
     SettingsChoice("Langue de l'application", I18n.languages, s.language) { v ->
         Store.updateSettings { it.copy(language = v) }
     }
-    SettingsItem("Mention légale", "CloudStreamPC n'héberge aucun contenu") { legal = true }
+    SettingsItem("Mention légale", "MonCloudi n'héberge aucun contenu") { legal = true }
 
     SettingsCategory("Téléchargements")
     SettingsItem("Dossier de téléchargement", DownloadManager.folder.path) {
@@ -121,7 +121,7 @@ fun GeneralSettings() {
             s.discordAppId,
             placeholder = "À créer une fois",
             subtitle = s.discordAppId.ifBlank {
-                "Sur discord.com/developers/applications : « New Application » nommée CloudStreamPC, puis copiez l'« Application ID »"
+                "Sur discord.com/developers/applications : « New Application » nommée MonCloudi, puis copiez l'« Application ID »"
             },
         ) { v -> Store.updateSettings { it.copy(discordAppId = v.trim()) } }
         SettingsItem("Ouvrir le portail développeur de Discord") { openInBrowser("https://discord.com/developers/applications") }
@@ -134,14 +134,14 @@ fun GeneralSettings() {
     }
 
     SettingsCategory("Liens")
-    SettingsItem("CloudStreamPC sur GitHub", "github.com/Nikola17/CloudStreamPC") { openInBrowser("https://github.com/Nikola17/CloudStreamPC") }
+    SettingsItem("MonCloudi sur GitHub", "github.com/Nikola17/MonCloudi") { openInBrowser("https://github.com/Nikola17/MonCloudi") }
     SettingsItem("CloudStream sur GitHub", "github.com/recloudstream/cloudstream") { openInBrowser("https://github.com/recloudstream/cloudstream") }
     SettingsItem("Wiki CloudStream", "Créer et utiliser des extensions") { openInBrowser("https://recloudstream.github.io/csdocs/") }
 
     if (legal) {
         InfoDialog("Mention légale", { legal = false }) {
             Text(
-                "CloudStreamPC n'héberge, ne stocke et ne distribue aucun contenu. Il affiche ce que renvoient les " +
+                "MonCloudi n'héberge, ne stocke et ne distribue aucun contenu. Il affiche ce que renvoient les " +
                     "extensions, comptes IPTV et addons que vous ajoutez vous-même ; vous êtes responsable de leur usage " +
                     "et du respect des lois de votre pays.",
             )
@@ -274,7 +274,7 @@ fun ProviderSettings() {
         "Clé API TMDB (facultative)",
         s.tmdbApiKey,
         placeholder = "Non renseignée",
-        subtitle = if (s.tmdbApiKey.isBlank()) "Ajoute la distribution avec photos, les titres similaires et les résumés d'épisodes en français. " +
+        subtitle = if (s.tmdbApiKey.isBlank()) "Facultatif (les recommandations similaires fonctionnent déjà sans clé). Ajoute la distribution avec photos, les recommandations TMDB en français et les résumés d'épisodes en français. " +
             "Gratuit : themoviedb.org → Paramètres → API" else "Renseignée",
     ) { v ->
         Store.updateSettings { it.copy(tmdbApiKey = v.trim()) }

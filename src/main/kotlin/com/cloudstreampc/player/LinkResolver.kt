@@ -40,8 +40,8 @@ object LinkResolver {
     }
 
     /**
-     * Same rule as automatic playback: waits for every extractor,
-     * or 10 s once at least one source was found (60 s at most).
+     * Same smart fast rule as automatic playback: finishes as soon as all extractors finish,
+     * or 1.5–3.5 s once playable sources have arrived (45 s max if none arrived yet).
      */
     suspend fun resolve(request: PlayRequest): Resolved = coroutineScope {
         val links = CopyOnWriteArrayList<ExtractorLink>()
@@ -60,13 +60,27 @@ object LinkResolver {
                 error = t
             }
         }
-        var waited = 0
-        while (job.isActive && waited < 60_000 && (waited < 10_000 || links.isEmpty())) {
-            delay(250)
-            waited += 250
+        val startedAt = System.currentTimeMillis()
+        var firstFoundAt = 0L
+        var lastFoundAt = 0L
+        var lastCount = 0
+        while (job.isActive) {
+            val now = System.currentTimeMillis()
+            if (now - startedAt >= 45_000) break
+            val count = links.size
+            if (count != lastCount) {
+                if (firstFoundAt == 0L && count > 0) firstFoundAt = now
+                lastFoundAt = now
+                lastCount = count
+            }
+            if (count > 0) {
+                val sinceFirst = now - firstFoundAt
+                val sinceLast = now - lastFoundAt
+                if (sinceFirst >= 3_500 || (sinceFirst >= 1_500 && sinceLast >= 1_200)) break
+            }
+            delay(100)
         }
-        // Subtitles often arrive with the last links: give them a moment.
-        if (!job.isActive) delay(300) else job.cancel()
+        if (!job.isActive) delay(150) else job.cancel()
         Resolved(links.toList(), subtitles.toList(), error)
     }
 }

@@ -3,9 +3,10 @@ package com.cloudstreampc.core
 import java.io.File
 
 object AppDirs {
-    /** %APPDATA%\CloudStreamPC on Windows, ~/Library/Application Support on macOS, ~/.local/share elsewhere. */
+    /** %APPDATA%\MonCloudi on Windows, ~/Library/Application Support/MonCloudi on macOS, ~/.local/share/MonCloudi elsewhere. */
     val root: File by lazy {
-        System.getProperty("cloudstreampc.home")?.let { return@lazy File(it).apply { mkdirs() } }
+        (System.getProperty("moncloudi.home") ?: System.getProperty("cloudstreampc.home"))
+            ?.let { return@lazy File(it).apply { mkdirs() } }
         val appData = System.getenv("APPDATA")
         val home = System.getProperty("user.home")
         val base = if (!appData.isNullOrBlank()) {
@@ -15,7 +16,7 @@ object AppDirs {
         } else {
             File(System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() } ?: "$home/.local/share")
         }
-        File(base, "CloudStreamPC").apply { mkdirs() }
+        File(base, "MonCloudi").apply { mkdirs() }
     }
 
     val plugins: File get() = File(root, "plugins").apply { mkdirs() }

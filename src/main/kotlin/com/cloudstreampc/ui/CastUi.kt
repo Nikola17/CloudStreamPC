@@ -69,7 +69,7 @@ fun CastDialog(request: PlayRequest, onDismiss: () -> Unit) {
                 } else if (CastManager.devices.isEmpty()) {
                     Text(
                         "Aucun appareil trouvé. Vérifiez que la TV est allumée et sur le même réseau que ce PC, et que le " +
-                            "pare-feu Windows autorise CloudStreamPC (réseau privé).",
+                            "pare-feu Windows autorise MonCloudi (réseau privé).",
                         color = CsColors.TextMuted, fontSize = 13.sp,
                     )
                 }

@@ -17,10 +17,10 @@ with open(os.path.join(dist, 'SHA256SUMS.txt')) as f:
         digest, name = line.split(maxsplit=1)
         sums[name.strip().lstrip('*')] = digest.upper()
 
-package = f'{owner}.CloudStreamPC'
-setup = f'CloudStreamPC-{version}-setup.exe'
-arm_setup = f'CloudStreamPC-{version}-arm64-setup.exe'
-portable = f'CloudStreamPC-{version}-portable.zip'
+package = f'{owner}.MonCloudi'
+setup = f'MonCloudi-{version}-setup.exe'
+arm_setup = f'MonCloudi-{version}-arm64-setup.exe'
+portable = f'MonCloudi-{version}-portable.zip'
 
 installers = [f"""  - Architecture: x64
     InstallerUrl: {base}/{setup}
@@ -42,12 +42,12 @@ ManifestVersion: 1.6.0
 PackageIdentifier: {package}
 PackageVersion: {version}
 PackageLocale: fr-FR
-Publisher: CloudStreamPC
+Publisher: MonCloudi
 PublisherUrl: https://github.com/{owner}
-PackageName: CloudStreamPC
+PackageName: MonCloudi
 PackageUrl: https://github.com/{repo}
 License: GPL-3.0
-ShortDescription: CloudStream pour ordinateur (films, séries, animés, TV en direct avec les extensions CloudStream)
+ShortDescription: MonCloudi — Films, séries, animés, IPTV et Stremio sur ordinateur
 Tags:
   - cloudstream
   - streaming
@@ -69,17 +69,17 @@ Installers:
 ManifestType: installer
 ManifestVersion: 1.6.0
 """,
-    'scoop/cloudstreampc.json': json.dumps({
+    'scoop/moncloudi.json': json.dumps({
         'version': version,
-        'description': 'CloudStream pour ordinateur (films, séries, animés, TV en direct)',
+        'description': 'MonCloudi — Films, séries, animés, IPTV et Stremio sur ordinateur',
         'homepage': f'https://github.com/{repo}',
         'license': 'GPL-3.0-only',
         'architecture': {'64bit': {'url': f'{base}/{portable}', 'hash': sums[portable].lower()}},
-        'extract_dir': 'CloudStreamPC',
-        'bin': 'CloudStreamPC.exe',
-        'shortcuts': [['CloudStreamPC.exe', 'CloudStreamPC']],
+        'extract_dir': 'MonCloudi',
+        'bin': 'MonCloudi.exe',
+        'shortcuts': [['MonCloudi.exe', 'MonCloudi']],
         'checkver': {'github': f'https://github.com/{repo}'},
-        'autoupdate': {'architecture': {'64bit': {'url': f'https://github.com/{repo}/releases/download/v$version/CloudStreamPC-$version-portable.zip'}}},
+        'autoupdate': {'architecture': {'64bit': {'url': f'https://github.com/{repo}/releases/download/v$version/MonCloudi-$version-portable.zip'}}},
     }, indent=4, ensure_ascii=False) + '\n',
 }
 
@@ -87,7 +87,7 @@ buffer = io.BytesIO()
 with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as z:
     for name, text in files.items():
         z.writestr(name, text)
-out = os.path.join(dist, f'CloudStreamPC-{version}-manifests.zip')
+out = os.path.join(dist, f'MonCloudi-{version}-manifests.zip')
 with open(out, 'wb') as f:
     f.write(buffer.getvalue())
 print(f'manifests: {out}')

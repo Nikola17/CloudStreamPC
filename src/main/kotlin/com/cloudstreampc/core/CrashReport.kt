@@ -12,14 +12,14 @@ import java.time.format.DateTimeFormatter
  * tokens and keys removed so the report can be posted on GitHub as it is.
  */
 object CrashReport {
-    internal var issuesUrl = "https://github.com/Nikola17/CloudStreamPC/issues/new"
+    internal var issuesUrl = "https://github.com/Nikola17/MonCloudi/issues/new"
     private const val MAX_URL = 7_500
 
     fun build(version: String, error: Throwable?, logLines: Int = 120): String {
         val log = runCatching { Logger.file.readLines().takeLast(logLines).joinToString("\n") }.getOrDefault("")
         val stack = error?.let { StringWriter().also { w -> it.printStackTrace(PrintWriter(w)) }.toString() }
         val text = buildString {
-            appendLine("CloudStreamPC $version")
+            appendLine("MonCloudi $version")
             appendLine("Système : ${System.getProperty("os.name")} ${System.getProperty("os.version")} (${System.getProperty("os.arch")})")
             appendLine("Java : ${System.getProperty("java.version")}")
             appendLine("Date : ${LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}")

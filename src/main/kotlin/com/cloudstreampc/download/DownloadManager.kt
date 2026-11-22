@@ -89,7 +89,7 @@ object DownloadManager {
     private fun defaultFolder(): File {
         val home = System.getProperty("user.home")
         val isMac = System.getProperty("os.name").lowercase().contains("mac")
-        return File(home, if (isMac) "Movies/CloudStreamPC" else "Videos/CloudStreamPC")
+        return File(home, if (isMac) "Movies/MonCloudi" else "Videos/MonCloudi")
     }
 
     fun applyParallelSetting() {

@@ -150,15 +150,23 @@ fun HomeScreen() {
 
     if (providers.isEmpty()) {
         MessageBox(
-            "Aucune extension avec page d'accueil",
-            "Ajoutez un dépôt d'extensions, un compte IPTV ou un addon Stremio dans les paramètres.",
-        ) { Button(onClick = { nav.select(Tab.Settings); nav.push(Route.Settings(SettingsPage.Extensions)) }) { Text("Gérer les extensions") } }
+            "Aucun addon configuré",
+            "Ajoutez vos propres extensions CloudStream, addons Stremio ou comptes IPTV dans l'onglet Addons.",
+        ) { Button(onClick = { nav.select(Tab.Addons) }) { Text("Gérer mes addons") } }
         return
     }
 
     val selected = providers.firstOrNull { it.name == Store.settings.homeProvider } ?: providers.first()
     LaunchedEffect(selected.name) {
         if (HomeState.loadedFor != selected.name) HomeState.load(selected)
+    }
+
+    // Real curated Top 10 of recent great releases (blending recency + popularity + rating).
+    var topRecentMovies by remember { mutableStateOf<List<com.cloudstreampc.providers.TopRecentRanking.Item>>(emptyList()) }
+    var topRecentSeries by remember { mutableStateOf<List<com.cloudstreampc.providers.TopRecentRanking.Item>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        topRecentMovies = runCatching { com.cloudstreampc.providers.TopRecentRanking.top10("movie") }.getOrDefault(emptyList())
+        topRecentSeries = runCatching { com.cloudstreampc.providers.TopRecentRanking.top10("series") }.getOrDefault(emptyList())
     }
 
     // Unfinished titles, plus series whose last launched episode was finished (next one to watch).
@@ -220,13 +228,39 @@ fun HomeScreen() {
                     item(key = "continue") { ContinueWatchingRow(continueWatching) }
                     item(key = "recommendations") { RecommendationRows(selected) }
                 }
-                val topSection = visible.firstOrNull { !it.second.isHorizontalImages && it.second.list.size >= 5 }
-                if (topSection != null) {
-                    item(key = "top10") {
-                        Top10Row("Top 10 · ${topSection.second.name}", topSection.second.list, nav::open)
+                if (providers.size > 1) {
+                    item(key = "source-bar") {
+                        SourceSwitcherBar(providers, selected) { api ->
+                            Store.updateSettings { it.copy(homeProvider = api.name) }
+                            HomeState.tab = HomeTab.All
+                        }
                     }
                 }
-                items(visible.filter { it !== topSection }, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
+                val isLiveOnly = selected.supportedTypes.all { it == TvType.Live }
+                fun openTopRecent(item: com.cloudstreampc.providers.TopRecentRanking.Item) {
+                    val wanted = com.cloudstreampc.core.Recommender.normalizedTitle(item.title)
+                    val direct = ordered.asSequence().flatMap { it.second.list.asSequence() }
+                        .firstOrNull { com.cloudstreampc.core.Recommender.normalizedTitle(it.name) == wanted }
+                    if (direct != null) {
+                        nav.open(direct)
+                    } else {
+                        SearchState.query = item.title
+                        SearchState.pendingSearch = true
+                        nav.select(Tab.Search)
+                    }
+                }
+                if (!isLiveOnly && (tab == HomeTab.All || tab == HomeTab.Movies) && topRecentMovies.isNotEmpty()) {
+                    item(key = "top10-recent-movies") {
+                        TopRecentRow("Top 10 · Meilleurs films récents", topRecentMovies, ::openTopRecent)
+                    }
+                }
+                if (!isLiveOnly && tab == HomeTab.Series && topRecentSeries.isNotEmpty()) {
+                    item(key = "top10-recent-series") {
+                        TopRecentRow("Top 10 · Meilleures séries récentes", topRecentSeries, ::openTopRecent)
+                    }
+                }
+                // Every provider section (including "Derniers Films") stays in a normal row!
+                items(visible, key = { (index, section) -> "$index/${section.name}/${section.list.first().url}" }) { (index, section) ->
                     val page = selected.mainPage.getOrNull(index)
                     PosterRow(
                         section.name,
@@ -263,6 +297,30 @@ fun HomeScreen() {
             picking = false
             Store.updateSettings { it.copy(homeProvider = api.name) }
             HomeState.tab = HomeTab.All
+        }
+    }
+}
+
+/** Quick source bar to switch effortlessly between CloudStream, Stremio, and IPTV addons. */
+@Composable
+private fun SourceSwitcherBar(providers: List<MainAPI>, selected: MainAPI, onSelect: (MainAPI) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = HomeInset),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp),
+    ) {
+        items(providers, key = { it.name }) { api ->
+            val kind = when (api) {
+                is com.cloudstreampc.providers.IptvProvider -> "IPTV"
+                is com.cloudstreampc.providers.StremioProvider -> "Stremio"
+                else -> "CloudStream"
+            }
+            val label = if (api is com.cloudstreampc.providers.IptvProvider) api.name else "${api.name} · $kind"
+            FilterChip(
+                selected = api.name == selected.name,
+                onClick = { onSelect(api) },
+                label = { Text(label, fontSize = 13.sp) },
+            )
         }
     }
 }

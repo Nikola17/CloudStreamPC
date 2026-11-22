@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=CloudStreamPC
+Name=MonCloudi
 GenericName=Films, séries et TV
-Comment=CloudStream pour ordinateur
-Exec=CloudStreamPC %U
-Icon=cloudstreampc
+Comment=MonCloudi — Films, séries, animés, IPTV et Stremio
+Exec=MonCloudi %U
+Icon=moncloudi
 Terminal=false
 Categories=AudioVideo;Video;Player;
 Keywords=cloudstream;streaming;iptv;films;séries;

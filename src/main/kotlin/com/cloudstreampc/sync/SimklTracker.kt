@@ -10,7 +10,7 @@ object SimklTracker : Tracker {
     override val developerUrl = "https://simkl.com/settings/developer/new/"
     override val setupSteps = listOf(
         "Sur Simkl, ouvrez Settings → Developer → « Create new app ».",
-        "Nom : CloudStreamPC. Redirect URI : ${OAuthLoopback.REDIRECT_URL} (non utilisée, mais obligatoire).",
+        "Nom : MonCloudi. Redirect URI : ${OAuthLoopback.REDIRECT_URL} (non utilisée, mais obligatoire).",
         "Enregistrez, puis copiez le « Client ID » ci-dessous.",
     )
     override val needsSecret = false

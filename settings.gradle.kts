@@ -14,4 +14,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CloudStreamPC"
+rootProject.name = "MonCloudi"

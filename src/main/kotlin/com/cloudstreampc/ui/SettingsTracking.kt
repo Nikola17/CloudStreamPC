@@ -100,7 +100,7 @@ private fun TrackerDialog(tracker: Tracker, onDismiss: () -> Unit) {
     val connected = saved.accessToken != null
 
     fun login() {
-        status = "Connexion en cours… Autorisez CloudStreamPC dans le navigateur."
+        status = "Connexion en cours… Autorisez MonCloudi dans le navigateur."
         error = false
         code = null
         job = scope.launch {

@@ -24,10 +24,13 @@ local state = {
     chapters = {},        -- same shape, guessed from the chapter titles
     pos = nil,
     duration = nil,
+    paused = false,
     w = 0, h = 0,
     mouse_x = -1, mouse_y = -1,
-    button = nil,         -- what is drawn: { kind, label, x, y, w, h, seg }
-    hovered = false,
+    last_mouse_move = 0,
+    button = nil,         -- bottom-right action: { kind, label, x, y, w, h, seg }
+    back_button = nil,    -- top-left "← Retour" button: { x, y, w, h }
+    hovered_target = nil, -- 'action' | 'back' | nil
     countdown_start = nil,
     loading = false,
     loading_since = 0,
@@ -105,7 +108,19 @@ local function skip(seg)
     mp.commandv('seek', tostring(seg.stop), 'absolute')
 end
 
+local function go_back()
+    if opts.embedded then
+        mp.commandv('script-message', 'cspc-back')
+    else
+        mp.commandv('quit', '0')
+    end
+end
+
 local function activate()
+    if state.hovered_target == 'back' then
+        go_back()
+        return
+    end
     local button = state.button
     if not button then return end
     if button.kind == 'skip' then
@@ -196,6 +211,35 @@ local function render()
         state.countdown_start = nil
     end
 
+    local hovered_target = nil
+
+    -- Top-left "← Retour" pill: visible when moving the mouse, hovering it, or paused.
+    local show_back = state.paused or (now - state.last_mouse_move < 2.6)
+    if show_back then
+        local bfont = math.floor(22 * s)
+        local blabel = '←  Retour'
+        local bw = math.floor(148 * s)
+        local bh = math.floor(46 * s)
+        local bx = math.floor(24 * s)
+        local by = math.floor(54 * s)
+        state.back_button = { x = bx, y = by, w = bw, h = bh }
+        local over_back = state.mouse_x >= bx and state.mouse_x <= bx + bw
+            and state.mouse_y >= by and state.mouse_y <= by + bh
+        if over_back then hovered_target = 'back' end
+        local br = math.floor(23 * s)
+        local bpath = rounded_rect(bx, by, bw, bh, br)
+        if over_back then
+            table.insert(lines, shape(bpath, 'ffffff', '00'))
+            table.insert(lines, text(bx + bw / 2, by + bh / 2, bfont, '000000', blabel, '\\shad0'))
+        else
+            table.insert(lines, shape(bpath, '141414', '45'))
+            table.insert(lines, outline(bpath, 'ffffff', math.max(1, math.floor(1.5 * s))))
+            table.insert(lines, text(bx + bw / 2, by + bh / 2, bfont, 'ffffff', blabel))
+        end
+    else
+        state.back_button = nil
+    end
+
     if button then
         local font = math.floor(26 * s)
         local label = button.label
@@ -214,6 +258,7 @@ local function render()
         button.x, button.y, button.w, button.h = bx, by, bw, bh
         local hovered = button.kind ~= 'loading' and state.mouse_x >= bx and state.mouse_x <= bx + bw
             and state.mouse_y >= by and state.mouse_y <= by + bh
+        if hovered then hovered_target = 'action' end
         local r = math.floor(6 * s)
         local path = rounded_rect(bx, by, bw, bh, r)
         if hovered then
@@ -230,14 +275,11 @@ local function render()
             end
             table.insert(lines, text(bx + bw / 2, by + bh / 2, font, 'ffffff', label))
         end
-        if hovered ~= state.hovered then
-            state.hovered = hovered
-            set_click_binding(hovered)
-        end
-    elseif state.hovered then
-        state.hovered = false
-        set_click_binding(false)
     end
+    if (hovered_target ~= nil) ~= (state.hovered_target ~= nil) then
+        set_click_binding(hovered_target ~= nil)
+    end
+    state.hovered_target = hovered_target
     state.button = button
 
     if state.message and now < state.message_until then
@@ -273,10 +315,16 @@ mp.observe_property('chapter-list', 'native', update_chapters)
 mp.observe_property('osd-dimensions', 'native', function(_, dim)
     if dim then state.w, state.h = dim.w, dim.h end
 end)
+mp.observe_property('pause', 'bool', function(_, value) state.paused = value == true end)
 mp.observe_property('mouse-pos', 'native', function(_, mouse)
     if mouse then
-        state.mouse_x = mouse.hover and mouse.x or -1
-        state.mouse_y = mouse.hover and mouse.y or -1
+        local nx = mouse.hover and mouse.x or -1
+        local ny = mouse.hover and mouse.y or -1
+        if nx ~= state.mouse_x or ny ~= state.mouse_y then
+            state.mouse_x = nx
+            state.mouse_y = ny
+            if mouse.hover then state.last_mouse_move = mp.get_time() end
+        end
     end
 end)
 
@@ -322,6 +370,8 @@ mp.register_script_message('next-failed', function(reason)
     msg(reason and reason ~= '' and reason or "Aucune source disponible pour l'épisode suivant", 5)
 end)
 
+mp.register_script_message('back', go_back)
+mp.add_key_binding('BS', 'cspc-back-key', go_back)
 mp.register_script_message('next', function() trigger_next('commande') end)
 mp.add_key_binding('N', 'cspc-next-episode', function() trigger_next('touche N') end)
 

@@ -16,7 +16,7 @@ object Logger {
         val fileOut = PrintStream(FileOutputStream(file, true), true, Charsets.UTF_8)
         System.setOut(TeeStream(System.out, fileOut))
         System.setErr(TeeStream(System.err, fileOut))
-        info("=== CloudStreamPC démarré ${LocalDateTime.now()} ===")
+        info("=== MonCloudi démarré ${LocalDateTime.now()} ===")
     }
 
     fun info(message: String) = println("[${time.format(LocalDateTime.now())}] $message")

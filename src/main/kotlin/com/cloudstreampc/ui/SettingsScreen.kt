@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.cloudstreampc.core.Profile
 import com.cloudstreampc.core.Store
 
-const val APP_VERSION = "3.0.10"
+const val APP_VERSION = "3.1.0"
 
 /** Main settings page, laid out like the Android app (profile, then categories). */
 @Composable
@@ -74,7 +74,7 @@ fun SettingsScreen() {
             CategoryRow(page.title) { nav.push(Route.Settings(page)) }
         }
         Text(
-            "$APP_VERSION  •  CloudStream library 4846fba  •  " + System.getProperty("os.name").let { os ->
+            "MonCloudi $APP_VERSION  •  CloudStream library 4846fba  •  " + System.getProperty("os.name").let { os ->
                 when {
                     os.startsWith("Windows") -> "Windows"
                     os.startsWith("Mac") -> "macOS"

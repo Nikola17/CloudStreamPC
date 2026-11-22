@@ -17,6 +17,7 @@ enum class Tab(val label: String) {
     Search("Recherche"),
     Library("Bibliothèque"),
     Downloads("Téléchargements"),
+    Addons("Addons"),
     Settings("Paramètres"),
 }
 
@@ -28,7 +29,7 @@ enum class SettingsPage(val title: String) {
     Layout("Disposition"),
     Updates("Mises à jour et Sauvegarde"),
     Accounts("Comptes et Sécurité"),
-    Extensions("Extensions"),
+    Extensions("Addons (CloudStream, Stremio, IPTV)"),
     Iptv("Comptes IPTV"),
     Profiles("Profils"),
     Tracking("Suivi et synchronisation"),

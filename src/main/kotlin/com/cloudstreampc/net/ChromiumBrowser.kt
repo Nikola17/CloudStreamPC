@@ -129,19 +129,47 @@ object ChromiumBrowser {
     @Volatile private var ownProfile = false
     private val profile: File get() = File(AppDirs.cache, if (ownProfile) "browser-${ProcessHandle.current().pid()}" else "browser").apply { mkdirs() }
 
-    private fun launch(headless: Boolean, startUrl: String = "about:blank"): Instance =
-        try {
-            launchWith(headless, startUrl)
-        } catch (e: IllegalStateException) {
-            val held = !ownProfile && runCatching { File(AppDirs.logs, "browser.log").readText() }.getOrDefault("").contains("ProcessSingleton")
-            if (!held) throw e
-            Logger.info("Profil du navigateur pris par un navigateur resté ouvert : profil de secours")
-            ownProfile = true
-            launchWith(headless, startUrl)
+    /** Removes leftover per-PID browser profiles from previous runs that are no longer alive. */
+    private fun cleanupStaleProfiles() {
+        runCatching {
+            val myPid = ProcessHandle.current().pid()
+            AppDirs.cache.listFiles { f -> f.isDirectory && f.name.startsWith("browser-") }?.forEach { dir ->
+                val pid = dir.name.removePrefix("browser-").toLongOrNull() ?: return@forEach
+                if (pid != myPid && ProcessHandle.of(pid).map { !it.isAlive }.orElse(true)) {
+                    runCatching { dir.deleteRecursively() }
+                }
+            }
         }
+    }
 
-    private fun launchWith(headless: Boolean, startUrl: String): Instance {
-        val exe = find() ?: error("Aucun navigateur Chromium (Edge, Chrome, Brave, Chromium) n'est installé")
+    private fun launch(headless: Boolean, startUrl: String = "about:blank"): Instance {
+        cleanupStaleProfiles()
+        val available = candidates().filter { it.isFile && it.canExecute() }
+        if (available.isEmpty()) error("Aucun navigateur Chromium (Edge, Chrome, Brave, Chromium) n'est installé")
+        var lastError: Throwable? = null
+        // Try primary browser with shared profile first; on Windows Edge/Chrome exits silently (empty log)
+        // when another instance holds the profile, so always fall back to an isolated per-PID profile.
+        for (exe in available) {
+            try {
+                return launchWith(exe, headless, startUrl)
+            } catch (e: Throwable) {
+                lastError = e
+                if (!ownProfile) {
+                    Logger.info("Profil navigateur occupé ou erreur au démarrage (${exe.name}) : bascule sur un profil isolé")
+                    ownProfile = true
+                    try {
+                        return launchWith(exe, headless, startUrl)
+                    } catch (e2: Throwable) {
+                        lastError = e2
+                    }
+                }
+                Logger.info("Échec du lancement de ${exe.name} : ${lastError?.message}")
+            }
+        }
+        throw lastError ?: IllegalStateException("Impossible de démarrer le navigateur Chromium")
+    }
+
+    private fun launchWith(exe: File, headless: Boolean, startUrl: String): Instance {
         val portFile = File(profile, "DevToolsActivePort").apply { delete() }
         val args = mutableListOf(
             exe.path,
@@ -149,6 +177,8 @@ object ChromiumBrowser {
             "--user-data-dir=${profile.path}",
             "--no-first-run", "--no-default-browser-check", "--disable-sync", "--disable-extensions",
             "--disable-background-networking", "--disable-component-update", "--mute-audio",
+            "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
             // Players live in frames from other sites: kept in the page's process, their requests (the video
             // address a WebViewResolver waits for) are reported with the page's. Videos start without a click.
             "--disable-features=Translate,MediaRouter,OptimizationHints,IsolateOrigins,site-per-process",
@@ -161,7 +191,8 @@ object ChromiumBrowser {
         userAgent?.let { args += "--user-agent=$it" }
         if (!isWindows && System.getProperty("user.name") == "root") args += "--no-sandbox"
         if (headless) args += startUrl else args += "--app=$startUrl"
-        val process = ProcessBuilder(args).redirectErrorStream(true).redirectOutput(File(AppDirs.logs, "browser.log")).start()
+        val logFile = File(AppDirs.logs, if (ownProfile) "browser-${ProcessHandle.current().pid()}.log" else "browser.log")
+        val process = ProcessBuilder(args).redirectErrorStream(true).redirectOutput(logFile).start()
         val deadline = System.currentTimeMillis() + 20_000
         while (!portFile.isFile || portFile.readLines().size < 2) {
             if (!process.isAlive) error("Le navigateur s'est fermé au démarrage (voir browser.log)")
@@ -258,9 +289,26 @@ object ChromiumBrowser {
         pages.incrementAndGet()
         val target = browser.call("Target.createTarget", mapOf("url" to "about:blank")).path("targetId").asText()
         val session = browser.call("Target.attachToTarget", mapOf("targetId" to target, "flatten" to true)).path("sessionId").asText()
+        val sessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().apply { add(session) }
         val done = CompletableDeferred<Unit>()
         val listener: (String?, String, JsonNode) -> Unit = { s, method, params ->
-            if (s == session) when (method) {
+            if (s in sessions) when (method) {
+                "Target.attachedToTarget" -> {
+                    val childSession = params.path("sessionId").asText()
+                    if (childSession.isNotBlank() && sessions.add(childSession)) {
+                        scope.launch {
+                            runCatching { browser.call("Network.enable", session = childSession) }
+                            userAgent?.let { runCatching { browser.call("Network.setUserAgentOverride", mapOf("userAgent" to it), childSession) } }
+                            runCatching {
+                                browser.call(
+                                    "Target.setAutoAttach",
+                                    mapOf("autoAttach" to true, "waitForDebuggerOnStart" to false, "flatten" to true),
+                                    childSession,
+                                )
+                            }
+                        }
+                    }
+                }
                 "Network.requestWillBeSent" -> {
                     val request = params.path("request")
                     val seen = SeenRequest(
@@ -271,7 +319,7 @@ object ChromiumBrowser {
                     )
                     if (!seen.url.startsWith("data:") && runCatching { onRequest(seen) }.getOrDefault(false)) done.complete(Unit)
                 }
-                "Page.loadEventFired" -> if (script != null) scope.launch {
+                "Page.loadEventFired" -> if (s == session && script != null) scope.launch {
                     runCatching {
                         val result = browser.call(
                             "Runtime.evaluate",
@@ -287,6 +335,14 @@ object ChromiumBrowser {
         try {
             browser.call("Network.enable", session = session)
             browser.call("Page.enable", session = session)
+            // Attach to any cross-origin iframe targets (OOPiFs) so embedded sports/video players' stream requests are always seen.
+            runCatching {
+                browser.call(
+                    "Target.setAutoAttach",
+                    mapOf("autoAttach" to true, "waitForDebuggerOnStart" to false, "flatten" to true),
+                    session,
+                )
+            }
             // Several pages at once (one per player of an event): each behaves as the visible, focused tab,
             // otherwise the players of the others don't start and never ask for their stream.
             runCatching { browser.call("Emulation.setFocusEmulationEnabled", mapOf("enabled" to true), session) }

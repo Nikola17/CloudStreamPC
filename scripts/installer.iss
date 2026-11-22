@@ -21,20 +21,20 @@
 
 [Setup]
 AppId={{B6A3C1E2-7F4D-4E8A-9C11-3D5E2F8A6B70}
-AppName=CloudStreamPC
+AppName=MonCloudi
 AppVersion={#AppVersion}
-AppVerName=CloudStreamPC {#AppVersion}
-AppPublisher=CloudStreamPC
-AppPublisherURL=https://github.com/Nikola17/CloudStreamPC
-AppSupportURL=https://github.com/Nikola17/CloudStreamPC/issues
-DefaultDirName={localappdata}\Programs\CloudStreamPC
-DefaultGroupName=CloudStreamPC
+AppVerName=MonCloudi {#AppVersion}
+AppPublisher=MonCloudi
+AppPublisherURL=https://github.com/Nikola17/MonCloudi
+AppSupportURL=https://github.com/Nikola17/MonCloudi/issues
+DefaultDirName={localappdata}\Programs\MonCloudi
+DefaultGroupName=MonCloudi
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename=CloudStreamPC-{#AppVersion}{#FileSuffix}-setup
+OutputBaseFilename=MonCloudi-{#AppVersion}{#FileSuffix}-setup
 SetupIconFile=..\icons\icon.ico
-UninstallDisplayIcon={app}\CloudStreamPC.exe
+UninstallDisplayIcon={app}\MonCloudi.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
@@ -61,13 +61,13 @@ Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\runtime"
 
 [Icons]
-Name: "{group}\CloudStreamPC"; Filename: "{app}\CloudStreamPC.exe"
-Name: "{autodesktop}\CloudStreamPC"; Filename: "{app}\CloudStreamPC.exe"; Tasks: desktopicon
+Name: "{group}\MonCloudi"; Filename: "{app}\MonCloudi.exe"
+Name: "{autodesktop}\MonCloudi"; Filename: "{app}\MonCloudi.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\CloudStreamPC.exe"; Description: "{cm:LaunchProgram,CloudStreamPC}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\MonCloudi.exe"; Description: "{cm:LaunchProgram,MonCloudi}"; Flags: nowait postinstall skipifsilent
 ; Update from inside the app (silent install): start it again once installed.
-Filename: "{app}\CloudStreamPC.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\MonCloudi.exe"; Flags: nowait; Check: WizardSilent
 
 [Code]
 // Versions up to 2.6 were MSI packages (upgrade code below): remove them so only one copy stays.

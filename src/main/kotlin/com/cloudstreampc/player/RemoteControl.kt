@@ -217,7 +217,7 @@ object RemoteControl {
     private fun page(): String {
         fun t(text: String) = mapper.writeValueAsString(I18n.tr(text))
         val labels = mapOf(
-            "title" to "Télécommande", "code" to "Code affiché par CloudStreamPC (Paramètres → Lecteur)", "ok" to "Valider",
+            "title" to "Télécommande", "code" to "Code affiché par MonCloudi (Paramètres → Lecteur)", "ok" to "Valider",
             "wrong" to "Code incorrect", "wait" to "Trop d'essais, réessayez dans une minute", "idle" to "Rien en lecture",
             "next" to "Épisode suivant", "sub" to "Sous-titres", "audio" to "Audio", "full" to "Plein écran", "stop" to "Arrêter",
             "chprev" to "Chaîne précédente", "chnext" to "Chaîne suivante", "live" to "En direct",
@@ -231,7 +231,7 @@ object RemoteControl {
 private const val REMOTE_PAGE = """<!doctype html>
 <html lang="__LANG__" dir="__DIR__"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#000000"><title>CloudStreamPC</title>
+<meta name="theme-color" content="#000000"><title>MonCloudi</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#000;color:#fff;font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:520px;margin:auto}
@@ -260,7 +260,7 @@ button:active{background:#3d50fa}
 <script>
 const L={/*LABELS*/};
 const $=id=>document.getElementById(id);
-$('h').textContent='CloudStreamPC · '+L.title;$('codeLabel').textContent=L.code;$('go').textContent=L.ok;
+$('h').textContent='MonCloudi · '+L.title;$('codeLabel').textContent=L.code;$('go').textContent=L.ok;
 $('bsub').textContent=L.sub;$('baudio').textContent=L.audio;$('bfull').textContent=L.full;$('bnext').textContent=L.next;
 $('bstop').textContent=L.stop;$('bstop2').textContent=L.stop;$('bprev').textContent=L.chprev;$('bchnext').textContent=L.chnext;
 let key=null;try{key=localStorage.getItem('cspcKey')}catch(e){}

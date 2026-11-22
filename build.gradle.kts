@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.cloudstreampc"
-version = "3.0.10"
+version = "3.1.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -81,10 +81,10 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg)
-            packageName = "CloudStreamPC"
+            packageName = "MonCloudi"
             packageVersion = project.version.toString()
-            description = "CloudStream pour ordinateur"
-            vendor = "CloudStreamPC"
+            description = "MonCloudi — Films, séries, animés, IPTV et Stremio"
+            vendor = "MonCloudi"
             // From `./gradlew suggestRuntimeModules`, plus TLS (crypto.ec), legacy page charsets, zip and the
             // JavaScript engine some extensions call through javax.script. jdk.httpserver runs the local
             // servers: live TV relay, cast proxy and the sign-in page of AniList / MyAnimeList.
@@ -99,21 +99,21 @@ compose.desktop {
                 shortcut = true
                 dirChooser = true
                 perUserInstall = true
-                menuGroup = "CloudStreamPC"
+                menuGroup = "MonCloudi"
                 upgradeUuid = "6f1b3f0e-2b8e-4c39-9d8e-6c1c2f5a7e41"
                 iconFile.set(project.file("icons/icon.ico"))
             }
             linux {
-                packageName = "cloudstreampc"
-                debMaintainer = "cloudstreampc@users.noreply.github.com"
+                packageName = "moncloudi"
+                debMaintainer = "moncloudi@users.noreply.github.com"
                 menuGroup = "AudioVideo"
                 appCategory = "AudioVideo"
                 shortcut = true
                 iconFile.set(project.file("icons/icon.png"))
             }
             macOS {
-                bundleID = "io.github.nikola17.cloudstreampc"
-                dockName = "CloudStreamPC"
+                bundleID = "app.moncloudi.desktop"
+                dockName = "MonCloudi"
                 appCategory = "public.app-category.entertainment"
                 // Made from icons/icon.png by the macOS build (sips + iconutil).
                 project.file("icons/icon.icns").takeIf { it.isFile }?.let { iconFile.set(it) }

@@ -30,17 +30,31 @@ object Network {
      */
     fun chosen(): String = Store.settings.dnsServer ?: Store.settings.dns.takeIf { it != "none" } ?: "auto"
 
-    /** DNS over HTTPS first; when it can't answer (DoH blocked, local name), the system DNS. */
-    private class WithFallback(private val primary: Dns) : Dns {
-        override fun lookup(hostname: String): List<InetAddress> =
-            try {
-                primary.lookup(hostname).ifEmpty { Dns.SYSTEM.lookup(hostname) }
-            } catch (e: UnknownHostException) {
-                Dns.SYSTEM.lookup(hostname)
+    /** Chains multiple DNS resolvers in order (e.g. Cloudflare DoH -> Google DoH -> System DNS). */
+    private class ChainedDns(private val chain: List<Dns>) : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            var lastError: UnknownHostException? = null
+            for (resolver in chain) {
+                try {
+                    val result = resolver.lookup(hostname)
+                    if (result.isNotEmpty()) return result
+                } catch (e: UnknownHostException) {
+                    lastError = e
+                }
             }
+            throw lastError ?: UnknownHostException(hostname)
+        }
     }
 
     private var originalClient: OkHttpClient? = null
+
+    private fun buildDoh(original: OkHttpClient, provider: DohProvider): Dns =
+        DnsOverHttps.Builder()
+            .client(original)
+            .url(provider.url.toHttpUrl())
+            .bootstrapDnsHosts(provider.bootstrap.map { InetAddress.getByName(it) })
+            .includeIPv6(false)
+            .build()
 
     /** Rebuilds the HTTP client shared by the extensions with the chosen DNS. */
     @Synchronized
@@ -52,13 +66,14 @@ object Network {
             return
         }
         try {
-            val dns = DnsOverHttps.Builder()
-                .client(original)
-                .url(provider.url.toHttpUrl())
-                .bootstrapDnsHosts(provider.bootstrap.map { InetAddress.getByName(it) })
-                .includeIPv6(false)
-                .build()
-            app.baseClient = original.newBuilder().dns(if (provider.id == "auto") WithFallback(dns) else dns).build()
+            val primary = buildDoh(original, provider)
+            val dns = if (provider.id == "auto") {
+                val google = providers.firstOrNull { it.id == "google" }?.let { runCatching { buildDoh(original, it) }.getOrNull() }
+                ChainedDns(listOfNotNull(primary, google, Dns.SYSTEM))
+            } else {
+                primary
+            }
+            app.baseClient = original.newBuilder().dns(dns).build()
             Logger.info("DNS over HTTPS : ${provider.label}")
         } catch (t: Throwable) {
             Logger.error("DNS over HTTPS indisponible", t)

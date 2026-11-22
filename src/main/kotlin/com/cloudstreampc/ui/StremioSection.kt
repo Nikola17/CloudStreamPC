@@ -82,15 +82,13 @@ fun StremioAddonsSection() {
             color = CsColors.TextMuted, fontSize = 13.sp,
         )
         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(url, { url = it }, singleLine = true, placeholder = { Text("https://…/manifest.json") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(url, { url = it }, singleLine = true, placeholder = { Text("https://…/manifest.json ou stremio://…") }, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(12.dp))
             Button(enabled = url.isNotBlank() && !busy, onClick = { add(url) }) { Text("Ajouter") }
-        }
-        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            StremioProvider.presets.filter { (_, preset) -> addons.none { it.manifestUrl == preset } }.forEach { (label, preset) ->
-                OutlinedButton(enabled = !busy, onClick = { add(preset) }) { Text("+ $label") }
+            if (busy) {
+                Spacer(Modifier.width(10.dp))
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             }
-            if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
         Spacer(Modifier.width(1.dp).padding(top = 12.dp))
         addons.forEach { entry ->

@@ -15,11 +15,11 @@ object OAuthLoopback {
     const val REDIRECT_URL = "http://localhost:$PORT/callback"
 
     private fun page(title: String, body: String) = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
-        <title>CloudStreamPC</title><style>body{background:#0b0b0d;color:#eee;font-family:system-ui,sans-serif;
+        <title>MonCloudi</title><style>body{background:#0b0b0d;color:#eee;font-family:system-ui,sans-serif;
         display:flex;align-items:center;justify-content:center;height:100vh;margin:0}div{text-align:center}
         h1{font-size:22px}p{color:#aaa}</style></head><body><div><h1>$title</h1><p>$body</p></div></body></html>"""
 
-    private val done = page("Connexion réussie", "Vous pouvez fermer cette page et revenir à CloudStreamPC.")
+    private val done = page("Connexion réussie", "Vous pouvez fermer cette page et revenir à MonCloudi.")
 
     /** Script for implicit grants: the token is in the URL fragment, which browsers never send to servers. */
     private val fragmentPage = """<!doctype html><html><head><meta charset="utf-8"></head><body style="background:#0b0b0d">

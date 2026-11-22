@@ -80,6 +80,8 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
                 { sub -> if (subtitles.none { it.url == sub.url }) subtitles += sub },
                 { link -> if (links.none { it.url == link.url }) links += link },
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Logger.error("loadLinks ${request.api.name}", t)
             error = t.message ?: t.toString()
@@ -88,17 +90,46 @@ fun LinksDialog(request: PlayRequest, onDismiss: () -> Unit) {
         }
     }
 
-    // Automatic mode: play the best source once every extractor answered, or after 10 s if some already did.
+    // Smart fast auto-play: don't force a 10 s wait once a strong source has already arrived.
+    // - Remembered working source: launch almost immediately (300 ms).
+    // - High-quality (>= 1080p / preferred / adaptive HLS) source: wait at most 1.5 s after arrival.
+    // - Any playable source: wait at most 3.5 s after first link (or 1.2 s of quiet).
     LaunchedEffect(request, autoPlay) {
         if (!autoPlay) return@LaunchedEffect
-        var waited = 0
-        while (loading && (waited < 10_000 || links.isEmpty())) {
-            delay(250)
-            waited += 250
+        val remembered = PlaybackManager.rememberedSource(request)
+        val preferredLimit = Store.settings.preferredQuality
+        var firstFoundAt = 0L
+        var lastFoundAt = 0L
+        var lastCount = 0
+        while (loading) {
+            val now = System.currentTimeMillis()
+            val playable = links.filter { ExternalPlayer.isPlayable(it) && it.name !in request.failedSources }
+            if (playable.size != lastCount) {
+                if (firstFoundAt == 0L && playable.isNotEmpty()) firstFoundAt = now
+                lastFoundAt = now
+                lastCount = playable.size
+            }
+            if (playable.isNotEmpty()) {
+                val hasRemembered = remembered != null && playable.any { it.name == remembered }
+                val hasStrong = playable.any { link ->
+                    val q = if (link.quality == Qualities.Unknown.value || link.quality <= 0) 720 else link.quality
+                    (preferredLimit != null && q >= preferredLimit) || q >= Qualities.P1080.value ||
+                        link.type == com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8
+                }
+                val sinceFirst = now - firstFoundAt
+                val sinceLast = now - lastFoundAt
+                if ((hasRemembered && sinceFirst >= 300) ||
+                    (hasStrong && sinceFirst >= 1_500) ||
+                    (sinceFirst >= 3_500) ||
+                    (sinceFirst >= 1_200 && sinceLast >= 1_200)
+                ) {
+                    break
+                }
+            }
+            delay(100)
         }
-        // Subtitles often arrive with the last links: give them a moment.
-        if (!loading) delay(300)
-        PlaybackManager.bestLink(links, request.failedSources, PlaybackManager.rememberedSource(request))?.let { play(it) }
+        if (!loading && links.isNotEmpty()) delay(150)
+        PlaybackManager.bestLink(links, request.failedSources, remembered)?.let { play(it) }
     }
 
     val best = PlaybackManager.bestLink(links, request.failedSources, PlaybackManager.rememberedSource(request))

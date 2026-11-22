@@ -11,8 +11,11 @@ LIMIT = 1.10
 
 
 def kind(name, ver):
-    """CloudStreamPC-2.7.0-amd64.deb -> -amd64.deb (the same file whatever the version)."""
-    return name.replace(f"CloudStreamPC-{ver}", "", 1) if ver else re.sub(r"^CloudStreamPC-[\d.]+", "", name)
+    """MonCloudi-3.1.0-setup.exe -> -setup.exe (the same file whatever the version)."""
+    for prefix in ("MonCloudi", "CloudStreamPC"):
+        if ver and name.startswith(f"{prefix}-{ver}"):
+            return name.replace(f"{prefix}-{ver}", "", 1)
+    return re.sub(r"^(?:MonCloudi|CloudStreamPC)-[\d.]+", "", name)
 
 
 previous = {}

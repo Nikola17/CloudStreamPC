@@ -4,3 +4,7 @@ build/
 *.iml
 local.properties
 .kotlin/
+app-resources/windows/mpv/
+dist/
+smoke/
+mpv.7z

@@ -100,6 +100,7 @@ object PlayerSurface {
                 ipcPath, process, listOf("fullscreen"),
                 onEvent = { name, args ->
                     if (name == "client-message" && args.firstOrNull() == "cspc-pip") ui { switchPip(pip = !pip) }
+                    if (name == "client-message" && args.firstOrNull() == "cspc-back") stop()
                     // mpv is quitting: if a script holds it up, it is closed anyway after a moment.
                     if (name == "shutdown") scope.launch {
                         if (!process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) process.destroy()

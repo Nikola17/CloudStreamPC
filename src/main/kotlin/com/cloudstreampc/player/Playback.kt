@@ -360,6 +360,7 @@ object PlaybackManager {
                 onEvent = { name, args ->
                     when (name) {
                         "client-message" -> when (args.firstOrNull()) {
+                            "cspc-back" -> PlayerSurface.stop()
                             "cspc-next" -> scope.launch { playNextInPlayer(session, ipcPath) }
                             "cspc-live-eof" -> scope.launch { liveEnded(session, ipcPath) }
                             "cspc-zap" -> scope.launch {
@@ -418,11 +419,20 @@ object PlaybackManager {
         if (nowPlaying?.request === request) nowPlaying = null
         DiscordPresence.clear()
 
-        // mpv gave up right away (dead link, 403...): offer the other sources again.
+        // mpv gave up right away (dead link, 403...): in auto-play mode try the next best source automatically
+        // (up to 2 automatic fallbacks) before falling back to the manual source picker.
         val quickFailure = System.currentTimeMillis() - session.itemStartedAt < 15_000 && session.position == null
         if (ipcPath != null && exitCode != 0 && quickFailure) {
             Logger.info("Échec de lecture de ${session.sourceName} (code $exitCode)")
-            pending = request.copy(autoPlay = false, chooseManually = true, failedSources = request.failedSources + session.sourceName)
+            val updatedFailed = request.failedSources + session.sourceName
+            val autoRetry = !request.chooseManually && (request.autoPlay || Store.settings.autoPlayBestSource) && updatedFailed.size <= 2
+            val fallback = if (autoRetry) bestLink(LinkResolver.found(request.playable.data), updatedFailed) else null
+            if (fallback != null) {
+                Logger.info("Bascule automatique vers la source suivante : ${fallback.name}")
+                play(request.copy(failedSources = updatedFailed), fallback, emptyList())
+                return
+            }
+            pending = request.copy(autoPlay = false, chooseManually = true, failedSources = updatedFailed)
             return
         }
 

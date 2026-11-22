@@ -10,7 +10,7 @@ object AniListTracker : Tracker {
     override val developerUrl = "https://anilist.co/settings/developer"
     override val setupSteps = listOf(
         "Sur AniList, ouvrez Paramètres → Développeur et cliquez sur « Create New Client ».",
-        "Nom : CloudStreamPC. Redirect URL : ${OAuthLoopback.REDIRECT_URL}",
+        "Nom : MonCloudi. Redirect URL : ${OAuthLoopback.REDIRECT_URL}",
         "Enregistrez, puis copiez le « Client ID » (un nombre) ci-dessous.",
     )
     override val needsSecret = false

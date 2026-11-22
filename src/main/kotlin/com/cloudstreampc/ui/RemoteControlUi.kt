@@ -68,7 +68,7 @@ fun RemoteControlDialog(onDismiss: () -> Unit) {
                     SelectionContainer { Text(plain, fontWeight = FontWeight.SemiBold) }
                     Text(RemoteControl.pin, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
                     Text(
-                        "Windows peut demander d'autoriser CloudStreamPC sur le réseau : acceptez pour les réseaux privés.",
+                        "Windows peut demander d'autoriser MonCloudi sur le réseau : acceptez pour les réseaux privés.",
                         color = CsColors.TextMuted, fontSize = 12.sp,
                     )
                 }

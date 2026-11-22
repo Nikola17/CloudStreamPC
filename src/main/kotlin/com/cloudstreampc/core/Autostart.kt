@@ -9,7 +9,7 @@ import java.io.File
 object Autostart {
     private val os = System.getProperty("os.name").lowercase()
     const val HIDDEN_ARG = "--minimized"
-    private const val NAME = "CloudStreamPC"
+    private const val NAME = "MonCloudi"
 
     /** The installed program (set by the launcher of the packaged app). */
     private val program: String? get() = System.getProperty("jpackage.app-path")?.takeIf { File(it).exists() }
@@ -47,7 +47,7 @@ object Autostart {
                 val desktop = File(System.getenv("XDG_CONFIG_HOME") ?: "${System.getProperty("user.home")}/.config", "autostart/cloudstreampc.desktop")
                 if (enabled) {
                     desktop.parentFile.mkdirs()
-                    desktop.writeText("[Desktop Entry]\nType=Application\nName=CloudStreamPC\nExec=\"$exe\" $HIDDEN_ARG\nX-GNOME-Autostart-enabled=true\n")
+                    desktop.writeText("[Desktop Entry]\nType=Application\nName=MonCloudi\nExec=\"$exe\" $HIDDEN_ARG\nX-GNOME-Autostart-enabled=true\n")
                 } else {
                     desktop.delete()
                 }

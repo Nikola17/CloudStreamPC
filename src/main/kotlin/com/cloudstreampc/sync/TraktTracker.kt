@@ -11,7 +11,7 @@ object TraktTracker : Tracker {
     override val developerUrl = "https://trakt.tv/oauth/applications/new"
     override val setupSteps = listOf(
         "Sur Trakt, ouvrez Settings → Your API Apps → « New Application ».",
-        "Nom : CloudStreamPC. Redirect uri : urn:ietf:wg:oauth:2.0:oob",
+        "Nom : MonCloudi. Redirect uri : urn:ietf:wg:oauth:2.0:oob",
         "Enregistrez, puis copiez le « Client ID » et le « Client Secret » ci-dessous.",
     )
     override val needsSecret = true

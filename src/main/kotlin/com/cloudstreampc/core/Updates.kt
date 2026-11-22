@@ -17,7 +17,7 @@ object Updates {
         val checksums: Asset? = null,
     )
 
-    internal var api = "https://api.github.com/repos/Nikola17/CloudStreamPC/releases/latest"
+    internal var api = "https://api.github.com/repos/Nikola17/MonCloudi/releases/latest"
 
     private val os = System.getProperty("os.name").lowercase()
     private val isWindows = "win" in os
@@ -41,10 +41,10 @@ object Updates {
 
     /** Release files that install this version here, best first (names given by the build, see build.yml). */
     internal fun installerNames(version: String): List<String> = when {
-        isWindows -> listOf(if ("aarch64" in arch || "arm64" in arch) "CloudStreamPC-$version-arm64-setup.exe" else "CloudStreamPC-$version-setup.exe")
-        isMac -> listOf(if ("aarch64" in arch || "arm64" in arch) "CloudStreamPC-$version-macos-arm64.dmg" else "CloudStreamPC-$version-macos-x64.dmg")
-        File("/usr/bin/dpkg").exists() -> listOf("CloudStreamPC-$version-amd64.deb")
-        File("/usr/bin/rpm").exists() -> listOf("CloudStreamPC-$version-x86_64.rpm")
+        isWindows -> listOf(if ("aarch64" in arch || "arm64" in arch) "MonCloudi-$version-arm64-setup.exe" else "MonCloudi-$version-setup.exe")
+        isMac -> listOf(if ("aarch64" in arch || "arm64" in arch) "MonCloudi-$version-macos-arm64.dmg" else "MonCloudi-$version-macos-x64.dmg")
+        File("/usr/bin/dpkg").exists() -> listOf("MonCloudi-$version-amd64.deb")
+        File("/usr/bin/rpm").exists() -> listOf("MonCloudi-$version-x86_64.rpm")
         else -> emptyList()
     }
 

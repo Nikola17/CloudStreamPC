@@ -53,6 +53,7 @@ private fun Tab.icon(selected: Boolean): ImageVector = when (this) {
     Tab.Search -> if (selected) Icons.Filled.Search else Icons.Outlined.Search
     Tab.Library -> if (selected) AppIcons.Folder else AppIcons.FolderOpen
     Tab.Downloads -> if (selected) AppIcons.Download else AppIcons.DownloadOutlined
+    Tab.Addons -> AppIcons.Extension
     Tab.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
 }
 
@@ -95,6 +96,7 @@ fun App(nav: Navigator) {
                                 Tab.Search -> SearchScreen()
                                 Tab.Library -> LibraryScreen()
                                 Tab.Downloads -> DownloadsScreen()
+                                Tab.Addons -> ExtensionsScreen()
                                 Tab.Settings -> SettingsScreen()
                             }
                         }

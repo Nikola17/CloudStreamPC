@@ -171,26 +171,64 @@ private fun RowArrow(modifier: Modifier, left: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Netflix-like "Top 10": large ranks behind the posters' left edge. */
+/** Netflix-like "Top 10": large ranks behind the posters' left edge, with title, year and rating visible. */
 @Composable
 fun Top10Row(title: String, items: List<SearchResponse>, onOpen: (SearchResponse) -> Unit) {
     if (items.size < 5) return
     val posterHeight = posterWidth * 1.5f
-    MediaRow(title, spacing = 6.dp) {
+    MediaRow(title, spacing = 10.dp) {
         itemsIndexed(items.take(10), key = { _, it -> "top/" + it.url }) { index, item ->
-            Box(Modifier.width(posterWidth + 96.dp).height(posterHeight + 12.dp).clipToBounds()) {
+            Box(Modifier.width(posterWidth + 82.dp).height(posterHeight + 56.dp)) {
                 Text(
                     "${index + 1}",
                     style = TextStyle(
                         fontFamily = AppFonts.Display, fontWeight = FontWeight.ExtraBold,
-                        fontSize = (posterHeight.value * 0.92f).sp, lineHeight = (posterHeight.value * 0.92f).sp,
+                        fontSize = (posterHeight.value * 0.85f).sp, lineHeight = (posterHeight.value * 0.85f).sp,
                         letterSpacing = (-0.08).em,
-                        brush = Brush.verticalGradient(listOf(Color(0xFF6A6A6A), Color(0xFF242424))),
+                        brush = Brush.verticalGradient(listOf(Color(0xFF787880), Color(0xFF202026))),
                     ),
-                    modifier = Modifier.align(Alignment.BottomStart).offset(x = (-6).dp, y = (posterHeight.value * 0.16f).dp),
+                    modifier = Modifier.align(Alignment.BottomStart).offset(x = (-4).dp, y = (-34).dp),
                 )
-                Box(Modifier.align(Alignment.BottomEnd).padding(bottom = 6.dp)) {
-                    SearchResponseCard(item, showTitle = false, onOpen = onOpen)
+                Box(Modifier.align(Alignment.TopEnd)) {
+                    SearchResponseCard(item, showTitle = true, onOpen = onOpen)
+                }
+            }
+        }
+    }
+}
+
+/** Curated Top 10 of recent popular & highly-rated movies/series (recency + popularity + rating). */
+@Composable
+fun TopRecentRow(
+    title: String,
+    items: List<com.cloudstreampc.providers.TopRecentRanking.Item>,
+    onClick: (com.cloudstreampc.providers.TopRecentRanking.Item) -> Unit,
+) {
+    if (items.size < 3) return
+    val posterHeight = posterWidth * 1.5f
+    MediaRow(title, spacing = 10.dp) {
+        itemsIndexed(items.take(10), key = { _, it -> "toprecent/" + it.id }) { index, item ->
+            Box(Modifier.width(posterWidth + 82.dp).height(posterHeight + 68.dp)) {
+                Text(
+                    "${index + 1}",
+                    style = TextStyle(
+                        fontFamily = AppFonts.Display, fontWeight = FontWeight.ExtraBold,
+                        fontSize = (posterHeight.value * 0.85f).sp, lineHeight = (posterHeight.value * 0.85f).sp,
+                        letterSpacing = (-0.08).em,
+                        brush = Brush.verticalGradient(listOf(Color(0xFF888894), Color(0xFF202026))),
+                    ),
+                    modifier = Modifier.align(Alignment.BottomStart).offset(x = (-4).dp, y = (-44).dp),
+                )
+                Box(Modifier.align(Alignment.TopEnd)) {
+                    PosterCard(
+                        title = item.title,
+                        posterUrl = item.posterUrl,
+                        badge = item.year?.toString(),
+                        score = item.rating?.let { "%.1f".format(it).removeSuffix(",0").removeSuffix(".0") },
+                        subtitle = item.genres.take(2).joinToString(" · ").ifBlank { null },
+                        showTitle = true,
+                        onClick = { onClick(item) },
+                    )
                 }
             }
         }

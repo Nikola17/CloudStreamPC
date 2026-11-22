@@ -52,10 +52,11 @@ object ExternalPlayer {
             PlayerKind.MPV -> {
                 command += "--force-media-title=$title"
                 command += windowArgs(wid)
+                command += performanceArgs()
                 if (startAt != null) command += "--start=+${startAt.toInt()}"
                 if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
                 command += interfaceArgs(hasNext, live, embedded = wid != null)
-                if (live) command += liveArgs()
+                command += if (live) liveArgs() else vodArgs()
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
                 command += subtitleArgs()
@@ -88,8 +89,47 @@ object ExternalPlayer {
 
     /** Folder of the mpv scripts shipped with the app (uosc and our buttons). */
     fun scriptsDir(): File? =
-        System.getProperty("compose.application.resources.dir")?.let { File(it, "mpv") }
-            ?.takeIf { File(it, "scripts/cloudstreampc.lua").isFile }
+        listOfNotNull(
+            System.getProperty("compose.application.resources.dir")?.let { File(it, "mpv") },
+            File("app-resources/common/mpv"),
+        ).firstOrNull { File(it, "scripts/cloudstreampc.lua").isFile }
+
+    /**
+     * Hardware-accelerated decoding, modern GPU rendering and smooth A/V sync so films,
+     * series and live streams play fast and lag-free on every PC.
+     */
+    fun performanceArgs(): List<String> = listOf(
+        "--hwdec=auto-safe",
+        "--vo=gpu-next,gpu",
+        "--video-sync=audio",
+        "--framedrop=vo",
+        "--vd-lavc-threads=0",
+        "--audio-pitch-correction=yes",
+    )
+
+    /**
+     * Movies & series: fast 1.5 s start, generous 128 MiB cache with a controlled 30 s readahead
+     * (prevents buffering AND avoids aggressive HLS burst requests that trigger host 403 limits),
+     * plus automatic network reconnection on hiccups.
+     */
+    fun vodArgs(): List<String> = listOf(
+        "--cache=yes",
+        "--cache-secs=45",
+        "--cache-pause=yes",
+        "--cache-pause-initial=yes",
+        "--cache-pause-wait=1.5",
+        "--demuxer-max-bytes=128MiB",
+        "--demuxer-max-back-bytes=32MiB",
+        "--demuxer-readahead-secs=30",
+        "--network-timeout=20",
+        "--hls-bitrate=max",
+        "--demuxer-lavf-o-append=fflags=+discardcorrupt",
+        "--stream-lavf-o-append=reconnect=1",
+        "--stream-lavf-o-append=reconnect_streamed=1",
+        "--stream-lavf-o-append=reconnect_on_network_error=1",
+        "--stream-lavf-o-append=reconnect_delay_max=3",
+        "--stream-lavf-o-append=rw_timeout=15000000",
+    )
 
     /**
      * Modern controls (uosc) plus our "Passer l'intro" / "Épisode suivant" buttons,
@@ -139,8 +179,8 @@ object ExternalPlayer {
             "--network-timeout=20",
             "--hls-bitrate=max",
             "--demuxer-lavf-o-append=fflags=+discardcorrupt",
-            "--demuxer-lavf-analyzeduration=1.5",
-            "--demuxer-lavf-probesize=2000000",
+            "--demuxer-lavf-analyzeduration=1.0",
+            "--demuxer-lavf-probesize=1000000",
             "--stream-lavf-o-append=reconnect=1",
             "--stream-lavf-o-append=reconnect_streamed=1",
             "--stream-lavf-o-append=reconnect_on_network_error=1",
@@ -152,27 +192,33 @@ object ExternalPlayer {
         val settings = Store.settings
         val dir = scriptsDir()
         if (settings.player != PlayerKind.MPV || !settings.playerInterface || dir == null) return emptyList()
+        // Logical, ergonomic control layout:
+        // Left: Back | Play/Pause, -10s, +10s, (+85s / Next episode or Live zap & channels)
+        // Right: Subtitles, Audio, Quality, Video, Speed | PiP, Fullscreen, Menu
         val controls = buildList {
-            add("menu")
+            add("command:arrow_back:script-message-to cloudstreampc back?Retour à MonCloudi (Retour arrière)")
             add("gap")
-            add("<video,audio>subtitles")
-            add("<has_many_audio>audio")
-            add("<has_many_video>video")
-            add("<stream>stream-quality")
-            add("gap")
-            add("space")
-            if (!live) add("<video,audio>speed")
-            add("space")
-            if (settings.skip85Button && !live) add("command:fast_forward:seek 85?Avancer de 85 s")
-            if (hasNext) add("command:skip_next:script-message-to cloudstreampc next?Épisode suivant (N)")
-            if (live) {
+            add("play-pause")
+            if (!live) {
+                add("command:replay_10:seek -10?Reculer de 10 s (←)")
+                add("command:forward_10:seek 10?Avancer de 10 s (→)")
+                if (settings.skip85Button) add("command:fast_forward:seek 85?Passer l'intro (+85 s)")
+                if (hasNext) add("command:skip_next:script-message-to cloudstreampc next?Épisode suivant (N)")
+            } else {
                 add("command:skip_previous:script-message-to cloudstreampc zap -1?Chaîne précédente (Page préc.)")
                 add("command:list:script-message-to cloudstreampc channels?Chaînes (C)")
                 add("command:skip_next:script-message-to cloudstreampc zap 1?Chaîne suivante (Page suiv.)")
             }
+            add("space")
+            add("<video,audio>subtitles")
+            add("<has_many_audio>audio")
+            add("<stream>stream-quality")
+            add("<has_many_video>video")
+            if (!live) add("<video,audio>speed")
             add("gap")
             add("command:picture_in_picture_alt:script-message-to cloudstreampc pip?Image dans l'image (Ctrl+P)")
             add("fullscreen")
+            add("menu")
         }.joinToString(",")
         val accent = String.format("%06x", settings.primaryColor and 0xFFFFFF)
         fun yesNo(value: Boolean) = if (value) "yes" else "no"
@@ -187,6 +233,10 @@ object ExternalPlayer {
             // uosc's own menus: its translations (fr, de, es…), English otherwise.
             "--script-opts-append=uosc-languages=" + com.cloudstreampc.ui.I18n.language.let { if (it == "en") "en" else "$it,en" },
             "--script-opts-append=uosc-controls=$controls",
+            "--script-opts-append=uosc-controls_size=38",
+            "--script-opts-append=uosc-controls_spacing=6",
+            "--script-opts-append=uosc-timeline_size=42",
+            "--script-opts-append=uosc-top_bar=no-border",
             "--script-opts-append=uosc-color=foreground=$accent,foreground_text=ffffff",
             "--script-opts-append=uosc-timeline_style=bar",
             "--script-opts-append=cloudstreampc-has_next=${yesNo(hasNext)}",
@@ -229,7 +279,7 @@ object ExternalPlayer {
     private fun startMpv(executable: File, options: List<String>, target: String, title: String) {
         fun start(wid: Long?) {
             val ipcPath = MpvIpc.newServerPath()
-            val command = listOf(executable.absolutePath) + windowArgs(wid) + "--input-ipc-server=$ipcPath" +
+            val command = listOf(executable.absolutePath) + windowArgs(wid) + performanceArgs() + "--input-ipc-server=$ipcPath" +
                 interfaceArgs(hasNext = false, embedded = wid != null) + options + "--" + target
             val process = ProcessBuilder(command).redirectErrorStream(true)
                 .redirectOutput(File(com.cloudstreampc.core.AppDirs.logs, "player.log")).start()

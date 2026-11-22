@@ -48,7 +48,16 @@ object GamepadInput {
         KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow != null || PlaybackManager.nowPlaying != null
 
     private fun loop() {
-        val manager = runCatching { ControllerManager().apply { initSDLGamepad() } }.getOrElse {
+        val manager = runCatching {
+            // Silence Jamepad's noisy stderr stacktrace when optional /gamecontrollerdb.txt is absent.
+            val prevErr = System.err
+            try {
+                System.setErr(java.io.PrintStream(java.io.OutputStream.nullOutputStream()))
+                ControllerManager().apply { initSDLGamepad() }
+            } finally {
+                System.setErr(prevErr)
+            }
+        }.getOrElse {
             Logger.info("Manettes indisponibles : ${it.message}")
             return
         }
