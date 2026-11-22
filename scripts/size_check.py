@@ -12,16 +12,16 @@ LIMIT = 1.10
 
 def kind(name, ver):
     """MonCloudi-3.1.0-setup.exe -> -setup.exe (the same file whatever the version)."""
-    for prefix in ("MonCloudi", "CloudStreamPC"):
+    for prefix in ("MonCloudi", "MonCloudi"):
         if ver and name.startswith(f"{prefix}-{ver}"):
             return name.replace(f"{prefix}-{ver}", "", 1)
-    return re.sub(r"^(?:MonCloudi|CloudStreamPC)-[\d.]+", "", name)
+    return re.sub(r"^(?:MonCloudi|MonCloudi)-[\d.]+", "", name)
 
 
 previous = {}
 try:
     req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest",
-                                 headers={"Authorization": f"Bearer {os.environ.get('GH_TOKEN', '')}", "User-Agent": "CloudStreamPC"})
+                                 headers={"Authorization": f"Bearer {os.environ.get('GH_TOKEN', '')}", "User-Agent": "MonCloudi"})
     release = json.load(urllib.request.urlopen(req, timeout=30))
     old = release["tag_name"].lstrip("v")
     previous = {kind(a["name"], old): a["size"] for a in release["assets"]}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 winget and Scoop manifests of a release (URLs and SHA-256 of its files), put in
-CloudStreamPC-<version>-manifests.zip. Submitting them is done with the owner's GitHub account:
+MonCloudi-<version>-manifests.zip. Submitting them is done with the owner's GitHub account:
 see "winget et Scoop" in the README.
 
 Usage: manifests.py <dist dir> <version> <owner/repo>

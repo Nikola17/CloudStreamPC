@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Signs CloudStreamPC.app with a Developer ID for Apple's notarization: Apple also checks the native
+Signs MonCloudi.app with a Developer ID for Apple's notarization: Apple also checks the native
 libraries packed inside the jars (Compose, the gamepad…), so each one is taken out, signed with the
 hardened runtime and put back, then every binary of the bundle and the bundle itself are signed.
 
-Usage: macos_sign.py <CloudStreamPC.app> "<Developer ID Application: …>" <entitlements.plist>
+Usage: macos_sign.py <MonCloudi.app> "<Developer ID Application: …>" <entitlements.plist>
 """
 import os, subprocess, sys, tempfile, zipfile
 

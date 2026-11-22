@@ -1,4 +1,4 @@
-; CloudStreamPC installer for Windows (Inno Setup 6), built from the slimmed app image.
+; MonCloudi installer for Windows (Inno Setup 6), built from the slimmed app image.
 ; LZMA2 solid compression makes it much smaller than an MSI. Installed for the current user only
 ; (no administrator rights). An older MSI installation (versions up to 2.6) is removed first.
 ;

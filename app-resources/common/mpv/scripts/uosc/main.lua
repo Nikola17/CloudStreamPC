@@ -616,7 +616,7 @@ function load_file_index_in_current_directory(index)
 end
 
 function update_render_delay(name, fps)
-	-- CloudStreamPC: inside another window the estimate can be 0 or infinite; a zero delay made the
+	-- MonCloudi: inside another window the estimate can be 0 or infinite; a zero delay made the
 	-- animations spin forever (100 % CPU, mpv unable to quit).
 	if fps and fps >= 10 and fps <= 500 then state.render_delay = 1 / fps end
 end

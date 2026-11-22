@@ -1,7 +1,7 @@
 package com.lagradost.cloudstream3.network
 
-import com.cloudstreampc.core.Logger
-import com.cloudstreampc.net.ChromiumBrowser
+import com.moncloudi.core.Logger
+import com.moncloudi.net.ChromiumBrowser
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.nicehttp.requestCreator
 import kotlinx.coroutines.runBlocking
@@ -13,7 +13,7 @@ import okhttp3.Response
 import java.util.Collections
 
 /**
- * CloudStreamPC's version of CloudStream's WebViewResolver (the desktop library only has an empty
+ * MonCloudi's version of CloudStream's WebViewResolver (the desktop library only has an empty
  * one). Same API, so extensions work unchanged: the page is opened in the computer's Chromium
  * browser in the background ([ChromiumBrowser]) and the requests it makes are reported.
  * This class is first on the class path, ahead of the library's.

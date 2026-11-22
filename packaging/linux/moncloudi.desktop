@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MonCloudi
+GenericName=Films, séries et TV
+Comment=MonCloudi — Films, séries, animés, IPTV et Stremio
+Exec=MonCloudi %U
+Icon=moncloudi
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=cloudstream;streaming;iptv;films;séries;
+StartupWMClass=com-moncloudi-MainKt

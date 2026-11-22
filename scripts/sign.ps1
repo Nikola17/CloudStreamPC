@@ -41,7 +41,7 @@ elseif ($env:WINDOWS_CERTIFICATE_PFX -or $TestCertificate) {
         $password = $env:WINDOWS_CERTIFICATE_PASSWORD
     } else {
         Write-Host "TEST : signature avec un certificat auto-signé jetable (non reconnu par Windows)"
-        $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=CloudStreamPC (test)" `
+        $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MonCloudi (test)" `
             -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddDays(2)
         $password = "test-" + [Guid]::NewGuid().ToString("N")
         Export-PfxCertificate -Cert $cert -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force) | Out-Null

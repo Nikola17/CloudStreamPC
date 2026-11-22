@@ -1,7 +1,7 @@
 # MonCloudi
 
 **MonCloudi pour Windows, macOS et Linux.** Une application de bureau qui reprend l'interface et les fonctions de
-l'application [MonCloudi](https://github.com/reMonCloudi/MonCloudi) (version TV) et charge
+l'application [CloudStream](https://github.com/recloudstream/cloudstream) (version TV) et charge
 **les mêmes extensions (`.cs3`)**, plus les **comptes IPTV** (Xtream Codes / M3U) et les
 **addons Stremio**.
 
@@ -14,8 +14,8 @@ l'application [MonCloudi](https://github.com/reMonCloudi/MonCloudi) (version TV)
    cliquez sur **Informations complémentaires** puis **Exécuter quand même**.
 
 Java et le lecteur vidéo [mpv](https://mpv.io) sont inclus : rien d'autre à installer.
-Au premier lancement, un assistant propose d'installer les extensions MonCloudi FR, d'ajouter un
-compte IPTV et le catalogue Stremio.
+MonCloudi démarre vierge : au premier lancement, il propose d'ouvrir le centre Addons pour ajouter vos dépôts
+d'extensions CloudStream (adresse, lien `cloudstreamrepo://` ou code court), vos addons Stremio et vos comptes IPTV.
 
 ### Linux (64 bits)
 
@@ -63,13 +63,21 @@ et la publication s'arrête si un fichier grossit de plus de 10 %.
 ## Fonctionnalités
 
 **Accueil** façon plateforme VOD : grande bannière avec le logo officiel du titre quand il existe, zoom
-lent et lecture directe ; onglets Accueil / Films / Séries / Animés / TV ; « Continuer à regarder » en
-vignettes paysage (un clic reprend la lecture) ; Top 10 ; rangées avec défilement au survol et « Tout voir » ;
-affiches avec badge qualité et note ; bouton filtre en bas à droite pour choisir le fournisseur.
+lent et lecture directe, boutons titre précédent / suivant et indicateurs cliquables ; onglets Accueil / Films /
+Séries / Animés / TV. Dans l'ordre : barre de changement d'addon, « Continuer à regarder » en vignettes paysage
+(un clic reprend la lecture), **Top 10 des meilleurs films récents** et **des meilleures séries récentes**, puis les
+recommandations, puis les rangées de l'addon (défilement au survol et « Tout voir »). Affiches avec badge qualité
+et note ; bouton filtre en bas à droite pour choisir le fournisseur.
+
+**Top 10** : récence (40 %), popularité (35 %) et note (25 %), titres dans la langue de l'interface (Wikidata, ou
+TMDB avec une clé). N'y entrent que les titres trouvés dans au moins un de vos addons, et pas les films encore au
+cinéma (sortis depuis moins de 3 mois, ou à l'affiche selon TMDB). Un clic ouvre la fiche dans l'addon affiché
+quand il a le titre, sinon la recherche dans tous vos addons.
 Typographie : Outfit pour les titres et Inter pour le texte (polices libres, SIL OFL).
 
 **Recommandations** sans compte (ni Simkl ni Trakt), calculées sur le PC à partir de ce que vous
-regardez : « Recommandé pour vous » et « Parce que vous avez regardé… ». Un titre fini compte plus qu'un
+regardez : seulement « Recommandé pour vous » et « Parce que vous avez regardé… » pour le dernier film ou la
+dernière série lancés. Rien d'avant 1990 (accueil et fiches). Un titre fini compte plus qu'un
 titre abandonné, les favoris comptent aussi, et un titre suggéré par plusieurs de vos films passe devant.
 Quand une extension ne propose pas de titres similaires, l'application cherche le même titre dans vos autres
 fournisseurs. La croix au survol d'une affiche écarte un titre. Séparées par profil, réglables dans Disposition.
@@ -83,7 +91,7 @@ vitesse de lecture.
 progression avec chapitres, menus des sous-titres, de la piste audio et de la qualité, vitesse, plein écran,
 bouton « +85 s ». Par-dessus, les boutons de MonCloudi :
 - **Passer l'intro / le récap** : pour les animés, temps de la base [AniSkip](https://aniskip.com)
-  (comme MonCloudi) ; pour les autres vidéos, quand leurs chapitres indiquent l'intro ou le générique.
+  (comme CloudStream) ; pour les autres vidéos, quand leurs chapitres indiquent l'intro ou le générique.
   Peut aussi passer l'intro automatiquement.
 - **Épisode suivant** : apparaît au générique de fin (compte à rebours de 10 s quand le générique est
   connu, sinon à la fin de l'épisode). L'épisode suivant se charge **dans la même fenêtre**, sans quitter le
@@ -169,8 +177,9 @@ La fiche d'une chaîne affiche « En ce moment » et « Ensuite ».
 démarrage puis toutes les 6 heures. Les sorties apparaissent dans une rangée « Nouveaux épisodes » de
 l'accueil, dans la Bibliothèque (pastille sur son icône) et en notification Windows.
 
-**Bandes-annonces** : après quelques secondes sur un titre, la bannière de l'accueil lance sa bande-annonce
-sans le son, comme sur les plateformes ; bouton « Bande-annonce » (avec le son) sur les fiches. La vidéo
+**Bandes-annonces** : après quelques secondes sur un titre, la bannière de l'accueil lance sa bande-annonce,
+dans la langue de l'interface quand elle existe (VF en français), sinon en version originale ; le bouton
+haut-parleur active ou coupe le son (choix retenu), le bouton « suivant » passe au titre suivant ; bouton « Bande-annonce » (avec le son) sur les fiches. La vidéo
 vient de l'extension ou du catalogue Cinemeta, lue depuis YouTube grâce à [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 (téléchargé à la première bande-annonce et tenu à jour, car YouTube change souvent).
 
@@ -202,11 +211,11 @@ le navigateur Chromium déjà installé sur l'ordinateur (Edge, présent sur tou
 Chromium), sans rien télécharger de plus. Si un site exige une vérification humaine (captcha), une petite fenêtre
 s'ouvre une seule fois ; les cookies obtenus servent ensuite à toutes les extensions.
 
-**Bibliothèque comme MonCloudi** : bouton « Statut » des fiches (En cours, À voir, En pause, Abandonné,
+**Bibliothèque comme CloudStream** : bouton « Statut » des fiches (En cours, À voir, En pause, Abandonné,
 Terminé), une section par statut dans la Bibliothèque, synchronisée entre PC et envoyée à AniList, MyAnimeList,
 Simkl et Trakt (Trakt : « À voir » = sa liste de suivi).
 
-**Depuis le téléphone** : Paramètres → Mises à jour et Sauvegarde → Importer depuis MonCloudi (Android) lit une
+**Depuis le téléphone** : Paramètres → Mises à jour et Sauvegarde → Importer depuis CloudStream (Android) lit une
 sauvegarde de l'application Android (.json) : bibliothèque et statuts, favoris, titres en cours et dépôts
 d'extensions.
 
@@ -268,7 +277,7 @@ Quand un titre n'a pas de source, un bouton le cherche dans les autres fournisse
   ou automatique), mise à jour des extensions, journaux, configuration initiale.
 - *Comptes et Sécurité* : **profils** (favoris, historique et progression séparés, code par profil,
   « Qui regarde ? » au démarrage), comptes IPTV, addons Stremio, verrouillage de l'application par code.
-- *Extensions* : dépôts et extensions MonCloudi (installation, mise à jour, désinstallation) et addons Stremio.
+- *Extensions* : dépôts et extensions CloudStream (installation, mise à jour, désinstallation) et addons Stremio.
 
 Raccourcis : flèches et `Entrée` pour se déplacer et ouvrir ; `Échap`, `Alt+←` ou le bouton « précédent » de la
 souris pour revenir en arrière.
@@ -347,14 +356,14 @@ de signature avec un certificat jetable (sans publier de version).
 
 ## Comment ça marche
 
-- L'API des extensions est la bibliothèque officielle de MonCloudi (module `library`, compilé pour la
+- L'API des extensions est la bibliothèque officielle de CloudStream (module `library`, compilé pour la
   JVM), récupérée via JitPack.
 - Une extension `.cs3` contient du bytecode Android (DEX). À l'installation, il est converti une fois pour
   toutes en classes Java avec [dex2jar](https://github.com/ThexXTURBOXx/dex2jar), puis chargé comme sur
   Android (`manifest.json` → `pluginClassName` → `load()`).
 - L'IPTV et Stremio sont des fournisseurs intégrés qui utilisent la même API que les extensions.
 - La position de lecture est lue en direct dans mpv par son IPC (pipe nommé sous Windows) ; la même
-  connexion sert au script du lecteur (`app-resources/common/mpv/scripts/MonCloudi.lua`) pour
+  connexion sert au script du lecteur (`app-resources/common/mpv/scripts/moncloudi.lua`) pour
   demander l'épisode suivant, que l'application charge dans la fenêtre ouverte.
 - Les bandes-annonces de l'accueil sont décodées par mpv en images brutes, affichées dans l'interface :
   le texte de la bannière reste par-dessus.
@@ -365,7 +374,7 @@ de signature avec un certificat jetable (sans publier de version).
 délai d'animation borné, voir `VERSION.txt`), [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT),
 téléchargés au premier besoin : [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) et [TorrServer](https://github.com/YouROK/TorrServer) MatriX.146.1 (GPL-3.0),
 [JmDNS](https://github.com/jmdns/jmdns) (Apache-2.0), [Jamepad](https://github.com/libgdx/Jamepad) et SDL2 (Apache-2.0 / zlib), polices Outfit et Inter (SIL OFL), bibliothèque
-MonCloudi (GPL-3.0).
+CloudStream (GPL-3.0).
 
 ## Compiler soi-même
 
@@ -384,4 +393,4 @@ Chaque envoi sur `main` compile les installateurs Windows avec GitHub Actions et
 
 ## Licence
 
-GPL-3.0, comme MonCloudi.
+GPL-3.0, comme CloudStream.

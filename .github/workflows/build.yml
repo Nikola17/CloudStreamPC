@@ -61,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "CloudStreamPC" }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "MonCloudi" }
           $release = Invoke-RestMethod -Headers $headers https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest
           $asset = $release.assets | Where-Object { $_.name -match '^mpv-${{ matrix.mpv }}-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
           if (-not $asset) { throw "Aucune archive mpv trouvée" }
@@ -78,7 +78,7 @@ jobs:
       # The player's IPC (named pipes) only exists on Windows: test it with the bundled mpv.
       - name: Test mpv on Windows (IPC, video in the window, remote)
         if: matrix.arch == 'x64'
-        run: ./gradlew --no-daemon test --tests "com.cloudstreampc.MpvIpcTest" --tests "com.cloudstreampc.EmbeddedPlayerTest" --tests "com.cloudstreampc.RemoteControlTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
+        run: ./gradlew --no-daemon test --tests "com.moncloudi.MpvIpcTest" --tests "com.moncloudi.EmbeddedPlayerTest" --tests "com.moncloudi.RemoteControlTest" "-Dtest.mpv=app-resources/windows/mpv/mpv.exe"
 
       # Release build (unused parts of Compose removed), then jars stored for the installer's LZMA.
       - name: Build the app
@@ -184,14 +184,14 @@ jobs:
           # with mpv on a virtual screen.
           xvfb-run -a -s "-screen 0 1600x1000x24" ./gradlew --no-daemon test "-Dtest.browser=$(command -v google-chrome || echo none)"
           ./gradlew --no-daemon createReleaseDistributable
-          python3 scripts/slim_app.py build/compose/binaries/main-release/app/CloudStreamPC linux
+          python3 scripts/slim_app.py build/compose/binaries/main-release/app/MonCloudi linux
 
       - name: Interface test
         run: |
           data="$RUNNER_TEMP/smoke-home"
           mkdir -p "$data"
-          JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" xvfb-run -a -s "-screen 0 1600x1000x24" \
-            timeout 300 build/compose/binaries/main-release/app/CloudStreamPC/bin/CloudStreamPC --smoke-test=$PWD/smoke || true
+          JAVA_TOOL_OPTIONS="-Dmoncloudi.home=$data" xvfb-run -a -s "-screen 0 1600x1000x24" \
+            timeout 300 build/compose/binaries/main-release/app/MonCloudi/bin/MonCloudi --smoke-test=$PWD/smoke || true
           if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
           cat smoke/smoke-ok.txt
 
@@ -206,29 +206,29 @@ jobs:
       - name: Packages
         run: |
           v="${{ steps.version.outputs.version }}"
-          app=build/compose/binaries/main-release/app/CloudStreamPC
+          app=build/compose/binaries/main-release/app/MonCloudi
           mkdir -p out dist
           for type in deb rpm; do
-            jpackage --type $type --app-image $app --name CloudStreamPC --app-version $v --dest out \
-              --vendor CloudStreamPC --description "CloudStream pour ordinateur" --icon icons/icon.png \
-              --linux-package-name cloudstreampc --linux-deb-maintainer cloudstreampc@users.noreply.github.com \
+            jpackage --type $type --app-image $app --name MonCloudi --app-version $v --dest out \
+              --vendor MonCloudi --description "MonCloudi — Films, séries, animés, IPTV et Stremio" --icon icons/icon.png \
+              --linux-package-name moncloudi --linux-deb-maintainer moncloudi@users.noreply.github.com \
               --linux-menu-group AudioVideo --linux-app-category AudioVideo --linux-shortcut
           done
-          cp out/*.deb "dist/CloudStreamPC-$v-amd64.deb"
-          cp out/*.rpm "dist/CloudStreamPC-$v-x86_64.rpm"
-          XZ_OPT="-9 -T0" tar -C "$(dirname $app)" -cJf "dist/CloudStreamPC-$v-linux-x64.tar.xz" CloudStreamPC
+          cp out/*.deb "dist/MonCloudi-$v-amd64.deb"
+          cp out/*.rpm "dist/MonCloudi-$v-x86_64.rpm"
+          XZ_OPT="-9 -T0" tar -C "$(dirname $app)" -cJf "dist/MonCloudi-$v-linux-x64.tar.xz" MonCloudi
           # AppImage: one file that runs on most distributions (mpv from the system).
           mkdir -p AppDir && cp -a $app/. AppDir/
-          cp packaging/linux/cloudstreampc.desktop AppDir/ && cp icons/icon.png AppDir/cloudstreampc.png
-          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/bin/CloudStreamPC" "$@"\n' > AppDir/AppRun && chmod +x AppDir/AppRun
+          cp packaging/linux/moncloudi.desktop AppDir/ && cp icons/icon.png AppDir/moncloudi.png
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/bin/MonCloudi" "$@"\n' > AppDir/AppRun && chmod +x AppDir/AppRun
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool && chmod +x appimagetool
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-appstream AppDir "dist/CloudStreamPC-$v-x86_64.AppImage" \
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run --no-appstream AppDir "dist/MonCloudi-$v-x86_64.AppImage" \
             || echo "::warning::AppImage non construite"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CloudStreamPC-linux
+          name: MonCloudi-linux
           path: dist/*
 
   macos:
@@ -278,7 +278,7 @@ jobs:
       - name: App
         run: |
           ./gradlew --no-daemon createReleaseDistributable
-          app=build/compose/binaries/main-release/app/CloudStreamPC.app
+          app=build/compose/binaries/main-release/app/MonCloudi.app
           python3 scripts/slim_app.py $app macos
           if [ -n "$MACOS_CERTIFICATE" ]; then
             echo "$MACOS_CERTIFICATE" | base64 --decode > cert.p12
@@ -299,8 +299,8 @@ jobs:
         run: |
           data="$RUNNER_TEMP/smoke-home"
           mkdir -p "$data"
-          JAVA_TOOL_OPTIONS="-Dcloudstreampc.home=$data" perl -e 'alarm 300; exec @ARGV' \
-            build/compose/binaries/main-release/app/CloudStreamPC.app/Contents/MacOS/CloudStreamPC --smoke-test=$PWD/smoke || true
+          JAVA_TOOL_OPTIONS="-Dmoncloudi.home=$data" perl -e 'alarm 300; exec @ARGV' \
+            build/compose/binaries/main-release/app/MonCloudi.app/Contents/MacOS/MonCloudi --smoke-test=$PWD/smoke || true
           if [ ! -f smoke/smoke-ok.txt ]; then tail -n 80 "$data"/logs/*.log || true; echo "Test d'interface échoué"; exit 1; fi
           cat smoke/smoke-ok.txt
 
@@ -315,10 +315,10 @@ jobs:
         run: |
           v="${{ steps.version.outputs.version }}"
           mkdir -p out dist
-          jpackage --type dmg --app-image build/compose/binaries/main-release/app/CloudStreamPC.app --name CloudStreamPC \
-            --app-version $v --dest out --vendor CloudStreamPC
+          jpackage --type dmg --app-image build/compose/binaries/main-release/app/MonCloudi.app --name MonCloudi \
+            --app-version $v --dest out --vendor MonCloudi
           # LZMA-compressed image (macOS 10.15+), smaller than jpackage's zlib one.
-          dmg="dist/CloudStreamPC-$v-macos-${{ matrix.arch }}.dmg"
+          dmg="dist/MonCloudi-$v-macos-${{ matrix.arch }}.dmg"
           hdiutil convert out/*.dmg -format ULMO -o "$dmg"
           if [ -n "${identity:-}" ]; then
             codesign --force --timestamp --sign "$identity" "$dmg"
@@ -331,7 +331,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CloudStreamPC-macos-${{ matrix.arch }}
+          name: MonCloudi-macos-${{ matrix.arch }}
           path: dist/*
 
   release:

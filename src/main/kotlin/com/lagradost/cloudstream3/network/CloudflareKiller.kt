@@ -1,8 +1,8 @@
 package com.lagradost.cloudstream3.network
 
-import com.cloudstreampc.core.Logger
-import com.cloudstreampc.net.ChromiumBrowser
-import com.cloudstreampc.net.browseUntil
+import com.moncloudi.core.Logger
+import com.moncloudi.net.ChromiumBrowser
+import com.moncloudi.net.browseUntil
 import com.lagradost.cloudstream3.app
 import kotlinx.coroutines.runBlocking
 import okhttp3.Headers

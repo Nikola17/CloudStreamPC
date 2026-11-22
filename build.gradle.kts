@@ -7,8 +7,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.0"
 }
 
-group = "com.cloudstreampc"
-version = "3.1.1"
+group = "com.moncloudi"
+version = "3.2.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"
@@ -56,7 +56,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty("cloudstreampc.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
+    systemProperty("moncloudi.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
     listOf("test.network", "test.search", "test.repo", "test.tasteOut", "test.trailerVideo", "test.mpv", "test.browser", "test.soak", "test.soak.sources", "test.soak.channels", "test.soak.buffer", "test.soak.iptv", "test.soak.iptv.ids", "test.fstv", "test.fstv.page", "test.fstv.referer").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
@@ -68,7 +68,7 @@ tasks.test {
 
 compose.desktop {
     application {
-        mainClass = "com.cloudstreampc.MainKt"
+        mainClass = "com.moncloudi.MainKt"
         // Release builds drop the unused parts of Compose (see proguard-rules.pro).
         buildTypes.release.proguard {
             configurationFiles.from(project.file("proguard-rules.pro"))
