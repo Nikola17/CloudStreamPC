@@ -16,6 +16,9 @@ import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -57,14 +60,14 @@ data class NowPlaying(
     val duration: Double? = null,
 )
 
-/** Keeps track of what the external player is doing (position, end of episode, next episode). */
+/** Keeps track of what the external player is doing (position, end of episode, next episode, live switching). */
 object PlaybackManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Request waiting for the user to pick a source (shown by the app as a dialog). */
     var pending by mutableStateOf<PlayRequest?>(null)
 
-    /** What is currently playing in the external player. */
+    /** What is currently playing in the player. */
     var nowPlaying by mutableStateOf<NowPlaying?>(null)
         private set
 
@@ -73,6 +76,14 @@ object PlaybackManager {
 
     /** What is being prepared before the player opens (torrent), shown by the app. */
     var status by mutableStateOf<String?>(null)
+
+    /** All playable sources found for the current item (for instant VF/VOSTFR/server switching in the player). */
+    var availableSources by mutableStateOf<List<ExtractorLink>>(emptyList())
+        private set
+
+    /** URL of the source currently loaded in mpv. */
+    var currentSourceUrl by mutableStateOf<String?>(null)
+        private set
 
     fun request(request: PlayRequest) {
         nextUp = null
@@ -86,17 +97,20 @@ object PlaybackManager {
         return progress.position.takeIf { it > 15 && !progress.finished }?.minus(5)
     }
 
-    /** What the player is showing; changes when the next episode is loaded in the same window. */
-    private class Session(request: PlayRequest, sourceName: String) {
+    /** What the player is showing; changes when the next episode or another source is loaded in the same window. */
+    private class Session(request: PlayRequest, sourceName: String, subtitles: List<SubtitleFile>) {
         @Volatile var request = request
         @Volatile var sourceName = sourceName
         @Volatile var position: Double? = null
         @Volatile var duration: Double? = null
         @Volatile var itemStartedAt = System.currentTimeMillis()
         @Volatile var lastSave = 0L
-        /** Between "next episode" and the start of its file: position updates are not for the new episode. */
+        /** Between "next episode" / "switch source" and the start of its file: position updates are not for the new item. */
         @Volatile var switching = false
-        @Volatile var pendingSubtitles: List<SubtitleFile> = emptyList()
+        /** All extension subtitles for the current item (preserved across source switches and auto-fallbacks). */
+        @Volatile var subtitles: List<SubtitleFile> = subtitles
+        /** Subtitles waiting to be added once mpv emits `file-loaded`. */
+        @Volatile var pendingSubtitles: List<SubtitleFile> = subtitles
         /** Live: the provider's link (played directly if the relay cannot handle it) and whether the relay is used. */
         @Volatile var direct: ExtractorLink? = null
         @Volatile var relayed = false
@@ -132,6 +146,7 @@ object PlaybackManager {
     private class LiveWindow(val session: Session, val process: Process, val ipcPath: String?)
 
     @Volatile private var liveWindow: LiveWindow? = null
+    @Volatile private var activeSession: Session? = null
 
     /** Launches the player for [link] (after preparing a torrent) and follows the playback until it is closed. */
     fun play(request: PlayRequest, link: ExtractorLink, subtitles: List<SubtitleFile>) {
@@ -195,10 +210,15 @@ object PlaybackManager {
         val (target, relayed) = liveTarget(request, link)
         val headers = if (relayed) emptyMap() else link.getAllHeaders()
         val userAgent = headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: com.lagradost.cloudstream3.USER_AGENT
+        val referer = headers.entries.firstOrNull { it.key.equals("referer", true) }?.value ?: ""
+        val otherHeaders = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
+            .map { (k, v) -> "$k: $v" }
         val sent = MpvIpc.send(
             ipcPath,
             *ExternalPlayer.liveBufferCommands().toTypedArray(),
             listOf("set_property", "user-agent", userAgent),
+            listOf("set_property", "referrer", referer),
+            listOf("set_property", "http-header-fields", otherHeaders),
             listOf("set_property", "force-media-title", titleOf(request.playable)),
             listOf("loadfile", target.url, "replace"),
             listOf("set_property", "pause", false),
@@ -211,13 +231,19 @@ object PlaybackManager {
         session.relayed = relayed
         session.liveEnds.clear()
         session.itemStartedAt = System.currentTimeMillis()
+        updateAvailableSources(request, link)
+        PlayerSurface.updateTitle(titleOf(request.playable))
         started(request, link.name)
         MpvIpc.toScript(ipcPath, "status", request.response.name)
     }
 
     /** Next / previous channel or a channel of the list, asked from the player. */
     private suspend fun zap(session: Session, ipcPath: String, target: PlayRequest?) {
-        if (target == null) return
+        if (target == null) {
+            MpvIpc.toScript(ipcPath, "status", "Aucune autre chaîne dans cette liste")
+            return
+        }
+        MpvIpc.toScript(ipcPath, "status", "Chargement : ${target.response.name}…")
         val resolved = LinkResolver.resolve(target)
         val best = bestLink(resolved.links)
         if (best == null) {
@@ -275,9 +301,20 @@ object PlaybackManager {
         start(request, link, subtitles, direct, relayed, null)
     }
 
-    /** The mpv (or VLC) IPC of what plays now, for the phone remote. */
+    /** The mpv (or VLC) IPC of what plays now, for the phone remote and embedded controls. */
     @Volatile var currentIpc: String? = null
         private set
+
+    private fun updateAvailableSources(request: PlayRequest, activeLink: ExtractorLink) {
+        val found = (listOf(activeLink) + LinkResolver.found(request.playable.data))
+            .filter(ExternalPlayer::isPlayable)
+            .distinctBy { it.url }
+            .sortedWith(compareByDescending<ExtractorLink> { it.url == activeLink.url }.thenByDescending { it.quality }.thenBy { it.name })
+        ui {
+            availableSources = found
+            currentSourceUrl = activeLink.url
+        }
+    }
 
     private fun start(
         request: PlayRequest,
@@ -289,21 +326,38 @@ object PlaybackManager {
     ) {
         val settings = Store.settings
         val ipcPath = if (settings.player == PlayerKind.MPV) MpvIpc.newServerPath() else null
+        val displayLink = direct ?: link
+        updateAvailableSources(request, displayLink)
+        val sourcesCount = (listOf(displayLink) + LinkResolver.found(request.playable.data)).distinctBy { it.url }.size
         val process = ExternalPlayer.play(
             link, titleOf(request.playable), subtitles, resumePosition(request), ipcPath,
             hasNext = ipcPath != null && request.next != null,
+            hasEpisodes = ipcPath != null && request.queue.size > 1,
+            hasSources = ipcPath != null && sourcesCount > 1,
             live = request.isLive,
             wid = wid,
         )
-        if (wid != null) PlayerSurface.follow(process, ipcPath)
+        if (wid != null) {
+            PlayerSurface.follow(process, ipcPath)
+        } else if (ipcPath != null) {
+            // Standalone mpv window: still track audio/sub/speed properties for controller & menu state.
+            PlayerController.attach(process, ipcPath)
+            scope.launch {
+                MpvIpc.watch(ipcPath, process, PlayerController.observedProperties) { name, value ->
+                    PlayerController.onProperty(process, name, value)
+                }
+                PlayerController.detach(process)
+            }
+        }
         if (ipcPath != null) scope.launch { ExternalPlayer.applySubtitleStyle(ipcPath, process) }
         currentIpc = ipcPath
         pending = null
         nextUp = null
-        val session = Session(request, link.name)
-        session.direct = direct ?: link
+        val session = Session(request, displayLink.name, subtitles)
+        session.direct = displayLink
         session.relayed = relayed
-        started(request, link.name)
+        activeSession = session
+        started(request, displayLink.name)
         if (request.isLive) {
             liveWindow = LiveWindow(session, process, ipcPath)
             LiveRelay.onStatus = { text ->
@@ -320,17 +374,91 @@ object PlaybackManager {
         }
     }
 
-    /** Adds OpenSubtitles tracks to the player's subtitle menu once the episode plays. */
-    private suspend fun addOnlineSubtitles(session: Session, ipcPath: String, request: PlayRequest) {
-        if (!Store.settings.onlineSubtitles || request.isLive) return
-        val found = OnlineSubtitles.find(request.response, request.playable)
-        if (found.isEmpty()) return
-        // `sub-add` needs the file to be loaded.
-        val deadline = System.currentTimeMillis() + 120_000
-        while (session.request === request && session.position == null && System.currentTimeMillis() < deadline) delay(500)
-        if (session.request !== request || session.position == null) return
-        MpvIpc.send(ipcPath, *found.map { listOf("sub-add", it.url, "auto", it.title, it.lang) }.toTypedArray())
-        Logger.info("${found.size} sous-titres en ligne ajoutés")
+    /** Downloads & adds extension subtitles cleanly via IPC (local cached files with proper titles and language codes). */
+    private suspend fun addExtensionSubtitles(session: Session, ipcPath: String, subtitles: List<SubtitleFile>) {
+        if (subtitles.isEmpty()) return
+        val wantedLangs = OnlineSubtitles.wantedLanguages()
+        val cached = coroutineScope {
+            subtitles.distinctBy { it.url }.map { sub ->
+                async(Dispatchers.IO) {
+                    val path = OnlineSubtitles.cacheSubtitle(sub.url)
+                    val code = OnlineSubtitles.inferLangCode(sub.lang)
+                    val title = sub.lang.takeIf { it.isNotBlank() } ?: OnlineSubtitles.displayLanguage(code)
+                    Triple(path, title, code)
+                }
+            }.awaitAll()
+        }
+        if (activeSession !== session) return
+        val alreadyHasSub = PlayerController.activeSubId != null
+        var autoUsed = alreadyHasSub
+        val commands = cached.map { (path, title, code) ->
+            val flag = if (!autoUsed && code in wantedLangs) {
+                autoUsed = true
+                "auto"
+            } else {
+                "cached"
+            }
+            listOf("sub-add", path, flag, title, code)
+        }
+        if (commands.isNotEmpty()) {
+            MpvIpc.send(ipcPath, *commands.toTypedArray())
+            Logger.info("${commands.size} sous-titre(s) de l'extension ajoutés")
+        }
+    }
+
+    /** Adds OpenSubtitles tracks to the player's subtitle menu once the episode plays, cached locally. */
+    private suspend fun addOnlineSubtitles(session: Session, ipcPath: String, request: PlayRequest, forceRun: Boolean = false) {
+        if ((!Store.settings.onlineSubtitles && !forceRun) || request.isLive) return
+        ui { PlayerController.loadingOnlineSubtitles = true }
+        try {
+            val found = OnlineSubtitles.find(request.response, request.playable, includeEnglishFallback = true)
+            if (found.isEmpty()) return
+            // Download subtitles in parallel while video buffers so they appear instantaneously on `file-loaded`.
+            val cached = coroutineScope {
+                found.map { sub ->
+                    async(Dispatchers.IO) {
+                        val path = OnlineSubtitles.cacheSubtitle(sub.url)
+                        Triple(path, sub.title, sub.lang)
+                    }
+                }.awaitAll()
+            }
+            // `sub-add` needs the file to be loaded.
+            val deadline = System.currentTimeMillis() + 120_000
+            while (session.request === request && session.position == null && System.currentTimeMillis() < deadline) delay(400)
+            if (session.request !== request || session.position == null) return
+
+            // Never clobber a subtitle the user or extension already selected, and don't force subs on VF audio.
+            val existingSub = PlayerController.activeSubId != null ||
+                MpvIpc.get(ipcPath, "sid")["sid"]?.takeIf { it.isInt || it.isLong } != null
+            val activeAudioLang = PlayerController.audioTracks.firstOrNull { it.id == PlayerController.activeAudioId || it.selected }?.lang
+            val audioIsFrench = OnlineSubtitles.inferLangCode(activeAudioLang) == "fre"
+            val primaryLang = OnlineSubtitles.wantedLanguages().firstOrNull() ?: "fre"
+            var autoSelected = existingSub || audioIsFrench
+
+            val commands = cached.map { (path, title, lang) ->
+                val flag = if (!autoSelected && lang == primaryLang) {
+                    autoSelected = true
+                    "auto"
+                } else {
+                    "cached"
+                }
+                listOf("sub-add", path, flag, title, lang)
+            }
+            if (commands.isNotEmpty()) {
+                MpvIpc.send(ipcPath, *commands.toTypedArray())
+                Logger.info("${commands.size} sous-titres en ligne ajoutés")
+                if (forceRun) MpvIpc.toScript(ipcPath, "status", "${commands.size} sous-titres OpenSubtitles ajoutés")
+            }
+        } finally {
+            ui { PlayerController.loadingOnlineSubtitles = false }
+        }
+    }
+
+    /** Manually triggers an OpenSubtitles lookup for the currently playing movie/episode. */
+    fun reloadOnlineSubtitles() {
+        val session = activeSession ?: return
+        val ipc = currentIpc ?: return
+        scope.launch { addOnlineSubtitles(session, ipc, session.request, forceRun = true) }
     }
 
     private fun started(request: PlayRequest, sourceName: String) {
@@ -353,6 +481,130 @@ object PlaybackManager {
         MpvIpc.toScript(ipcPath, "segments", com.moncloudi.core.compactJson(segments))
     }
 
+    /** Switches to another resolved source (VF / VOSTFR / server) seamlessly inside the running player at the current position. */
+    fun switchSource(link: ExtractorLink) {
+        val session = activeSession ?: return
+        val ipcPath = currentIpc ?: return
+        scope.launch {
+            switchSourceInPlayer(session, ipcPath, link)
+        }
+    }
+
+    private suspend fun switchSourceInPlayer(session: Session, ipcPath: String, link: ExtractorLink) {
+        val request = session.request
+        if (request.isLive) {
+            changeChannel(session, ipcPath, request, link)
+            return
+        }
+        MpvIpc.toScript(ipcPath, "status", "Changement de source : ${link.name}…")
+        val resolvedLink = if (TorrentEngine.isTorrent(link)) {
+            runCatching { torrentToHttp(link, request.playable) }.onFailure { Logger.error("Torrent ${link.name}", it) }.getOrNull()
+        } else {
+            link
+        }
+        if (resolvedLink == null) {
+            MpvIpc.toScript(ipcPath, "status", "Source indisponible : ${link.name}")
+            return
+        }
+        val pos = session.position?.takeIf { it > 2.0 }
+        val headers = resolvedLink.getAllHeaders()
+        val userAgent = headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value
+            ?: com.lagradost.cloudstream3.USER_AGENT
+        val referer = headers.entries.firstOrNull { it.key.equals("referer", true) }?.value ?: ""
+        val otherHeaders = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
+            .map { (k, v) -> "$k: $v" }
+
+        session.switching = true
+        session.pendingSubtitles = session.subtitles
+        val sent = MpvIpc.send(
+            ipcPath,
+            *ExternalPlayer.vodBufferCommands().toTypedArray(),
+            listOf("set_property", "user-agent", userAgent),
+            listOf("set_property", "referrer", referer),
+            listOf("set_property", "http-header-fields", otherHeaders),
+            listOf("set_property", "force-media-title", titleOf(request.playable)),
+            listOf("set_property", "start", pos?.let { "+${it.toInt()}" } ?: "none"),
+            listOf("loadfile", resolvedLink.url, "replace"),
+            listOf("set_property", "pause", false),
+        )
+        if (!sent) {
+            session.switching = false
+            return
+        }
+        session.sourceName = link.name
+        session.direct = link
+        session.itemStartedAt = System.currentTimeMillis()
+        updateAvailableSources(request, link)
+        nowPlaying = NowPlaying(request, link.name, pos, session.duration)
+        rememberSource(request, link.name)
+        MpvIpc.toScript(ipcPath, "status", "Source : ${link.name}")
+        scope.launch { addOnlineSubtitles(session, ipcPath, request) }
+    }
+
+    /** Jumps to any episode index in the current series/anime queue inside the same player window. */
+    fun switchEpisode(index: Int) {
+        val session = activeSession ?: return
+        val ipcPath = currentIpc ?: return
+        scope.launch {
+            switchEpisodeInPlayer(session, ipcPath, index)
+        }
+    }
+
+    private fun openSourcesMenu(session: Session, ipcPath: String) {
+        val sources = availableSources.ifEmpty {
+            LinkResolver.found(session.request.playable.data).filter(ExternalPlayer::isPlayable).distinctBy { it.url }
+        }
+        if (sources.isEmpty()) {
+            MpvIpc.toScript(ipcPath, "status", "Aucune autre source disponible")
+            return
+        }
+        val items = sources.map { link ->
+            val q = Qualities.getStringByInt(link.quality).ifBlank { link.type.name }
+            val active = link.url == currentSourceUrl || link.name == session.sourceName
+            mapOf(
+                "title" to link.name,
+                "hint" to q,
+                "active" to active,
+                "value" to listOf("script-message-to", "moncloudi", "switch-source", link.url),
+            )
+        }
+        val selected = sources.indexOfFirst { it.url == currentSourceUrl || it.name == session.sourceName }.coerceAtLeast(0)
+        val menu = com.moncloudi.core.compactJson(
+            mapOf(
+                "type" to "moncloudi-sources",
+                "title" to "Sources (VF / VOSTFR / Serveur)",
+                "items" to items,
+                "selected_index" to selected + 1,
+                "search_style" to "on_demand",
+            ),
+        )
+        MpvIpc.send(ipcPath, listOf("script-message-to", "uosc", "open-menu", menu))
+    }
+
+    private fun openEpisodesMenu(session: Session, ipcPath: String) {
+        val queue = session.request.queue
+        if (queue.size < 2) return
+        val items = queue.mapIndexed { idx, ep ->
+            val watched = Store.isWatched(session.request.api.name, ep.data)
+            mapOf(
+                "title" to (ep.label ?: ep.title),
+                "hint" to if (idx == session.request.index) "En cours" else if (watched) "Vu" else "",
+                "active" to (idx == session.request.index),
+                "value" to listOf("script-message-to", "moncloudi", "switch-episode", idx.toString()),
+            )
+        }
+        val menu = com.moncloudi.core.compactJson(
+            mapOf(
+                "type" to "moncloudi-episodes",
+                "title" to session.request.response.name,
+                "items" to items,
+                "selected_index" to session.request.index + 1,
+                "search_style" to "on_demand",
+            ),
+        )
+        MpvIpc.send(ipcPath, listOf("script-message-to", "uosc", "open-menu", menu))
+    }
+
     private fun follow(session: Session, process: Process, ipcPath: String?) {
         if (ipcPath != null) {
             MpvIpc.observe(
@@ -361,18 +613,31 @@ object PlaybackManager {
                     when (name) {
                         "client-message" -> when (args.firstOrNull()) {
                             "moncloudi-back" -> PlayerSurface.stop()
-                            "moncloudi-next" -> scope.launch { playNextInPlayer(session, ipcPath) }
+                            "moncloudi-next" -> scope.launch { switchEpisodeInPlayer(session, ipcPath, session.request.index + 1) }
+                            "moncloudi-sources" -> scope.launch { openSourcesMenu(session, ipcPath) }
+                            "moncloudi-switch-source" -> scope.launch {
+                                val url = args.getOrNull(1) ?: return@launch
+                                val chosen = availableSources.firstOrNull { it.url == url }
+                                    ?: LinkResolver.found(session.request.playable.data).firstOrNull { it.url == url }
+                                if (chosen != null) switchSourceInPlayer(session, ipcPath, chosen)
+                            }
+                            "moncloudi-episodes" -> scope.launch { openEpisodesMenu(session, ipcPath) }
+                            "moncloudi-switch-episode" -> scope.launch {
+                                val idx = args.getOrNull(1)?.toIntOrNull() ?: return@launch
+                                switchEpisodeInPlayer(session, ipcPath, idx)
+                            }
                             "moncloudi-live-eof" -> scope.launch { liveEnded(session, ipcPath) }
                             "moncloudi-zap" -> scope.launch {
                                 zap(session, ipcPath, LiveTv.neighbour(session.request, args.getOrNull(1)?.toIntOrNull() ?: 1))
                             }
                             "moncloudi-zap-to" -> scope.launch {
-                                val provider = session.request.api as? com.moncloudi.providers.IptvProvider
                                 val url = args.getOrNull(1)
-                                if (provider != null && url != null) zap(session, ipcPath, LiveTv.requestFor(provider, url))
+                                if (url != null) zap(session, ipcPath, LiveTv.requestFor(session.request.api, url))
                             }
                             "moncloudi-channels" -> scope.launch {
-                                LiveTv.channelMenu(session.request)?.let { menu -> MpvIpc.send(ipcPath, listOf("script-message-to", "uosc", "open-menu", menu)) }
+                                LiveTv.channelMenu(session.request)?.let { menu ->
+                                    MpvIpc.send(ipcPath, listOf("script-message-to", "uosc", "open-menu", menu))
+                                } ?: MpvIpc.toScript(ipcPath, "status", "Liste des chaînes indisponible")
                             }
                         }
                         "start-file" -> if (session.switching) {
@@ -385,7 +650,7 @@ object PlaybackManager {
                             val subtitles = session.pendingSubtitles
                             session.pendingSubtitles = emptyList()
                             if (subtitles.isNotEmpty()) scope.launch {
-                                MpvIpc.send(ipcPath, *subtitles.map { listOf("sub-add", it.url, "auto", it.lang) }.toTypedArray())
+                                addExtensionSubtitles(session, ipcPath, subtitles)
                             }
                         }
                     }
@@ -408,6 +673,10 @@ object PlaybackManager {
         }
         val exitCode = process.waitFor()
         if (currentIpc == ipcPath) currentIpc = null
+        if (activeSession === session) {
+            activeSession = null
+            ui { availableSources = emptyList(); currentSourceUrl = null }
+        }
         if (liveWindow?.session === session) {
             liveWindow = null
             LiveRelay.close()
@@ -429,7 +698,7 @@ object PlaybackManager {
             val fallback = if (autoRetry) bestLink(LinkResolver.found(request.playable.data), updatedFailed) else null
             if (fallback != null) {
                 Logger.info("Bascule automatique vers la source suivante : ${fallback.name}")
-                play(request.copy(failedSources = updatedFailed), fallback, emptyList())
+                play(request.copy(failedSources = updatedFailed), fallback, session.subtitles)
                 return
             }
             pending = request.copy(autoPlay = false, chooseManually = true, failedSources = updatedFailed)
@@ -445,14 +714,15 @@ object PlaybackManager {
         }
     }
 
-    /** "Épisode suivant" in the player: finds its best source and loads it in the same window. */
-    private suspend fun playNextInPlayer(session: Session, ipcPath: String) {
+    /** Loads any episode [targetIndex] in the same player window (used by "Épisode suivant" and the episode picker). */
+    private suspend fun switchEpisodeInPlayer(session: Session, ipcPath: String, targetIndex: Int) {
         val current = session.request
-        val next = current.next ?: return
+        if (targetIndex !in current.queue.indices || targetIndex == current.index) return
+        val next = current.copy(index = targetIndex, autoPlay = true, failedSources = emptyList())
         // Moving on from the credits counts as watched (the countdown starts before 90 %).
         val position = session.position
         val duration = session.duration
-        if (position != null && duration != null && duration > 0 && position / duration >= 0.7) {
+        if (targetIndex == current.index + 1 && position != null && duration != null && duration > 0 && position / duration >= 0.7) {
             if (!Store.isWatched(current.api.name, current.playable.data)) {
                 Store.setWatched(current.api.name, current.playable.data, true)
                 com.moncloudi.sync.Trackers.watched(current.response, current.playable)
@@ -461,7 +731,8 @@ object PlaybackManager {
             session.save()
         }
         runCatching { com.moncloudi.core.Taste.recordOutcome(current.response, session.position, session.duration) }
-        Logger.info("Épisode suivant dans le lecteur : ${next.playable.label}")
+        Logger.info("Changement d'épisode dans le lecteur : ${next.playable.label}")
+        MpvIpc.toScript(ipcPath, "status", "Chargement : ${next.playable.label ?: next.playable.title}…")
 
         val resolved = LinkResolver.resolve(next)
         val best = bestLink(resolved.links, remembered = rememberedSource(next))
@@ -470,8 +741,8 @@ object PlaybackManager {
         } else {
             best
         }
-        if (link == null) {
-            MpvIpc.toScript(ipcPath, "next-failed", "Aucune source trouvée pour l'épisode suivant")
+        if (link == null || best == null) {
+            MpvIpc.toScript(ipcPath, "next-failed", "Aucune source trouvée pour cet épisode")
             pending = next.copy(autoPlay = false, chooseManually = true)
             return
         }
@@ -482,14 +753,15 @@ object PlaybackManager {
         val otherHeaders = headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
             .map { (k, v) -> "$k: $v" }
         val resume = resumePosition(next)
-        Logger.info("Chargement de ${link.name}, reprise à ${resume?.toInt() ?: 0} s")
+        Logger.info("Chargement de ${best.name}, reprise à ${resume?.toInt() ?: 0} s")
 
         session.switching = true
+        session.subtitles = resolved.subtitles
         session.pendingSubtitles = resolved.subtitles
-        // Options set before `loadfile` apply to the new file (and replace the previous episode's).
+        // Options set before `loadfile` apply to the new file (keep VOD buffer settings, never live TV's 8s/60s!).
         val sent = MpvIpc.send(
             ipcPath,
-            *ExternalPlayer.liveBufferCommands().toTypedArray(),
+            *ExternalPlayer.vodBufferCommands().toTypedArray(),
             listOf("set_property", "user-agent", userAgent),
             listOf("set_property", "referrer", referer),
             listOf("set_property", "http-header-fields", otherHeaders),
@@ -504,9 +776,12 @@ object PlaybackManager {
         }
         session.flushStats()
         session.request = next
-        session.sourceName = link.name
+        session.sourceName = best.name
+        session.direct = best
         session.itemStartedAt = System.currentTimeMillis()
-        started(next, link.name)
+        updateAvailableSources(next, best)
+        PlayerSurface.updateTitle(titleOf(next.playable))
+        started(next, best.name)
         val info = mapOf("has_next" to (next.next != null), "label" to (next.playable.label ?: next.playable.title))
         MpvIpc.toScript(ipcPath, "episode", com.moncloudi.core.compactJson(info))
         scope.launch { addOnlineSubtitles(session, ipcPath, next) }
@@ -543,5 +818,9 @@ object PlaybackManager {
         val key = "${request.response.apiName}|${request.response.url}"
         if (Store.library.preferredSources[key] == sourceName) return
         Store.updateLibrary { lib -> lib.copy(preferredSources = (lib.preferredSources + (key to sourceName)).entries.toList().takeLast(500).associate { it.key to it.value }) }
+    }
+
+    private fun ui(block: () -> Unit) {
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) block() else javax.swing.SwingUtilities.invokeLater(block)
     }
 }

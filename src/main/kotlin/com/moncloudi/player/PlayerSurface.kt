@@ -43,6 +43,14 @@ object PlayerSurface {
         private set
     var pip by mutableStateOf(false)
         private set
+    /** True while an EmbeddedPlayer side panel (Subtitles, Audio, Sources, Episodes, Settings) is open. */
+    var panelOpen by mutableStateOf(false)
+
+    /** True while a uosc popup menu inside mpv is open (Escape/Backspace must go to mpv, not close the video). */
+    val menuOpen: Boolean get() = PlayerController.uoscMenuOpen
+
+    /** Callback set by EmbeddedPlayer to re-focus the native VideoCanvas when a side panel closes. */
+    @Volatile var onFocusVideo: (() -> Unit)? = null
 
     /** The app's main window, set by Main. */
     var window: WindowState? = null
@@ -56,6 +64,11 @@ object PlayerSurface {
     /** Window size and place before full screen / picture in picture, restored afterwards. */
     private var saved: Triple<WindowPlacement, DpSize, WindowPosition>? = null
 
+    /** Updates the title shown in the embedded player bar (e.g. after next episode or channel zap). */
+    fun updateTitle(newTitle: String) {
+        ui { this.title = newTitle }
+    }
+
     /**
      * Shows the video area and returns the native id mpv draws into, or null when it can't be had
      * (mpv then opens its own window). The video that was playing there is stopped first.
@@ -63,11 +76,12 @@ object PlayerSurface {
     suspend fun acquire(title: String): Long? {
         if (!enabled) return null
         stopCurrent()
-        handle?.takeIf { active }?.let { ui { this.title = title }; return it }
+        handle?.takeIf { active }?.let { ui { this.title = title; this.panelOpen = false }; return it }
         val deferred = CompletableDeferred<Long>()
         waiting = deferred
         ui {
             this.title = title
+            this.panelOpen = false
             active = true
             window?.let { if (it.isMinimized) it.isMinimized = false }
         }
@@ -89,29 +103,36 @@ object PlayerSurface {
         handle = null
     }
 
-    /** Follows the mpv drawing in the area: full screen and picture in picture asked from its controls, and its exit. */
+    /** Follows the mpv drawing in the area: full screen, PiP, live track/sub/audio state, and exit. */
     fun follow(process: Process, ipcPath: String?) {
         this.process = process
         this.ipcPath = ipcPath
+        if (ipcPath != null) PlayerController.attach(process, ipcPath)
         // "Plein écran" in the settings: the window goes full screen with the video.
         if (Store.settings.fullscreen && !fullscreen && !pip) switchFullscreen(true)
         if (ipcPath != null) scope.launch {
+            val watchedProps = (listOf("fullscreen") + PlayerController.observedProperties).distinct()
             MpvIpc.watch(
-                ipcPath, process, listOf("fullscreen"),
+                ipcPath, process, watchedProps,
                 onEvent = { name, args ->
                     if (name == "client-message" && args.firstOrNull() == "moncloudi-pip") ui { switchPip(pip = !pip) }
                     if (name == "client-message" && args.firstOrNull() == "moncloudi-back") stop()
                     // mpv is quitting: if a script holds it up, it is closed anyway after a moment.
                     if (name == "shutdown") scope.launch {
-                        if (!process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) process.destroy()
+                        if (!process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
                     }
                 },
             ) { name, value ->
-                if (name == "fullscreen" && process === this@PlayerSurface.process) ui { switchFullscreen(value.asBoolean()) }
+                if (name == "fullscreen" && process === this@PlayerSurface.process) {
+                    ui { switchFullscreen(value.asBoolean()) }
+                } else {
+                    PlayerController.onProperty(process, name, value)
+                }
             }
         }
         scope.launch {
             process.waitFor()
+            PlayerController.detach(process)
             if (this@PlayerSurface.process === process) {
                 this@PlayerSurface.process = null
                 this@PlayerSurface.ipcPath = null
@@ -128,6 +149,12 @@ object PlayerSurface {
         }
     }
 
+    /** Synchronous shutdown used when the whole app is exiting (JVM shutdown hook / close-to-tray). */
+    fun stopBlocking() {
+        stopCurrent()
+        ui { if (process == null) close() }
+    }
+
     /** Window and Compose state are only changed on the interface thread. */
     private fun ui(block: () -> Unit) {
         if (javax.swing.SwingUtilities.isEventDispatchThread()) block() else javax.swing.SwingUtilities.invokeLater(block)
@@ -138,15 +165,20 @@ object PlayerSurface {
         process = null
         val path = ipcPath
         ipcPath = null
+        PlayerController.detach(current)
         // A clean quit (exit code 0) is not taken for a playback failure.
         if (path != null && current.isAlive) MpvIpc.send(path, listOf("quit", 0))
-        if (!current.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) current.destroy()
+        if (!runCatching { current.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false)) {
+            runCatching { current.descendants().forEach { it.destroyForcibly() } }
+            runCatching { current.destroyForcibly() }
+        }
     }
 
     private fun close() {
         if (pip || fullscreen) restoreWindow()
         pip = false
         fullscreen = false
+        panelOpen = false
         active = false
         waiting = null
     }
@@ -156,6 +188,7 @@ object PlayerSurface {
         val state = window ?: return
         if (on) {
             if (pip) restoreWindow().also { pip = false }
+            panelOpen = false
             saveWindow(state)
             state.placement = WindowPlacement.Fullscreen
         } else {
@@ -164,6 +197,7 @@ object PlayerSurface {
         fullscreen = on
         // Keeps mpv's own button (uosc) in step when the change comes from the app.
         ipcPath?.let { path -> scope.launch { MpvIpc.send(path, listOf("set_property", "fullscreen", on)) } }
+        ui { onFocusVideo?.invoke() }
     }
 
     /** Picture in picture: a small player above the other windows, in the bottom-right corner. */
@@ -171,6 +205,7 @@ object PlayerSurface {
         if (pip == this.pip) return
         val state = window ?: return
         if (pip) {
+            panelOpen = false
             if (fullscreen) {
                 restoreWindow()
                 fullscreen = false
@@ -186,6 +221,7 @@ object PlayerSurface {
             restoreWindow()
         }
         this.pip = pip
+        ui { onFocusVideo?.invoke() }
     }
 
     private fun saveWindow(state: WindowState) {

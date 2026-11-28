@@ -37,6 +37,8 @@ object ExternalPlayer {
         startAt: Double? = null,
         ipcPath: String? = null,
         hasNext: Boolean = false,
+        hasEpisodes: Boolean = false,
+        hasSources: Boolean = false,
         live: Boolean = false,
         wid: Long? = null,
     ): Process {
@@ -52,10 +54,16 @@ object ExternalPlayer {
             PlayerKind.MPV -> {
                 command += "--force-media-title=$title"
                 command += windowArgs(wid)
-                command += performanceArgs()
+                command += performanceArgs(embedded = wid != null)
                 if (startAt != null) command += "--start=+${startAt.toInt()}"
                 if (ipcPath != null) command += "--input-ipc-server=$ipcPath"
-                command += interfaceArgs(hasNext, live, embedded = wid != null)
+                command += interfaceArgs(
+                    hasNext = hasNext,
+                    live = live,
+                    embedded = wid != null,
+                    hasEpisodes = hasEpisodes,
+                    hasSources = hasSources,
+                )
                 command += if (live) liveArgs() else vodArgs()
                 settings.subtitleLanguages.takeIf { it.isNotBlank() }?.let { command += "--slang=$it" }
                 settings.audioLanguages.takeIf { it.isNotBlank() }?.let { command += "--alang=$it" }
@@ -65,7 +73,10 @@ object ExternalPlayer {
                 if (referer != null) command += "--referrer=$referer"
                 headers.filterKeys { !it.equals("user-agent", true) && !it.equals("referer", true) }
                     .forEach { (k, v) -> command += "--http-header-fields-append=$k: $v" }
-                subtitles.forEach { command += "--sub-file=${it.url}" }
+                // Extension subtitles are added cleanly via IPC once loaded (with proper title, lang,
+                // and local file caching so video-host Referer/Origin headers never break subtitle CDNs);
+                // only fall back to --sub-file when IPC is unavailable.
+                if (ipcPath == null) subtitles.forEach { command += "--sub-file=${it.url}" }
                 command += "--"
                 command += link.url
             }
@@ -97,15 +108,23 @@ object ExternalPlayer {
     /**
      * Hardware-accelerated decoding, modern GPU rendering and smooth A/V sync so films,
      * series and live streams play fast and lag-free on every PC.
+     * In embedded mode (`--wid`) on Windows, `--vo=gpu` + `--d3d11-flip=no` is required so DWM
+     * composites mpv's child HWND cleanly inside Compose/Skiko's window without a black screen.
      */
-    fun performanceArgs(): List<String> = listOf(
-        "--hwdec=auto-safe",
-        "--vo=gpu-next,gpu",
-        "--video-sync=audio",
-        "--framedrop=vo",
-        "--vd-lavc-threads=0",
-        "--audio-pitch-correction=yes",
-    )
+    fun performanceArgs(embedded: Boolean = false): List<String> = buildList {
+        add("--hwdec=auto-safe")
+        if (embedded && isWindows) {
+            add("--vo=gpu")
+            add("--gpu-context=d3d11")
+            add("--d3d11-flip=no")
+        } else {
+            add("--vo=gpu-next,gpu")
+        }
+        add("--video-sync=audio")
+        add("--framedrop=vo")
+        add("--vd-lavc-threads=0")
+        add("--audio-pitch-correction=yes")
+    }
 
     /**
      * Movies & series: fast 1.5 s start, generous 128 MiB cache with a controlled 30 s readahead
@@ -166,6 +185,12 @@ object ExternalPlayer {
         )
     }
 
+    /** VOD episode/source switch: keep fast 1.5 s start and controlled 30 s readahead. */
+    fun vodBufferCommands(): List<List<Any>> = listOf(
+        listOf("set_property", "cache-pause-wait", 1.5),
+        listOf("set_property", "demuxer-readahead-secs", 30),
+    )
+
     fun liveArgs(): List<String> {
         val buffer = Store.settings.liveBuffer.coerceIn(2, 60)
         return listOf(
@@ -188,13 +213,19 @@ object ExternalPlayer {
         )
     }
 
-    fun interfaceArgs(hasNext: Boolean, live: Boolean = false, embedded: Boolean = false): List<String> {
+    fun interfaceArgs(
+        hasNext: Boolean,
+        live: Boolean = false,
+        embedded: Boolean = false,
+        hasEpisodes: Boolean = false,
+        hasSources: Boolean = false,
+    ): List<String> {
         val settings = Store.settings
         val dir = scriptsDir()
         if (settings.player != PlayerKind.MPV || !settings.playerInterface || dir == null) return emptyList()
         // Logical, ergonomic control layout:
-        // Left: Back | Play/Pause, -10s, +10s, (+85s / Next episode or Live zap & channels)
-        // Right: Subtitles, Audio, Quality, Video, Speed | PiP, Fullscreen, Menu
+        // Left: Back | Play/Pause, -10s, +10s, (+85s / Episodes / Next episode or Live zap & channels)
+        // Right: Sources (VF/VOSTFR), Subtitles, Audio, Quality, Aspect, Speed | PiP, Fullscreen, Menu
         val controls = buildList {
             add("command:arrow_back:script-message-to moncloudi back?Retour à MonCloudi (Retour arrière)")
             add("gap")
@@ -203,6 +234,7 @@ object ExternalPlayer {
                 add("command:replay_10:seek -10?Reculer de 10 s (←)")
                 add("command:forward_10:seek 10?Avancer de 10 s (→)")
                 if (settings.skip85Button) add("command:fast_forward:seek 85?Passer l'intro (+85 s)")
+                if (hasEpisodes) add("command:playlist_play:script-message-to moncloudi episodes?Liste des épisodes")
                 if (hasNext) add("command:skip_next:script-message-to moncloudi next?Épisode suivant (N)")
             } else {
                 add("command:skip_previous:script-message-to moncloudi zap -1?Chaîne précédente (Page préc.)")
@@ -210,10 +242,13 @@ object ExternalPlayer {
                 add("command:skip_next:script-message-to moncloudi zap 1?Chaîne suivante (Page suiv.)")
             }
             add("space")
+            if (hasSources) add("command:tune:script-message-to moncloudi sources?Sources (VF / VOSTFR / Serveur)")
             add("<video,audio>subtitles")
-            add("<has_many_audio>audio")
+            // Always show Audio button when audio is present (not only > 1 track) so users can always inspect/switch tracks.
+            add("<has_audio>audio")
             add("<stream>stream-quality")
             add("<has_many_video>video")
+            add("command:aspect_ratio:script-message-to moncloudi aspect?Format d'image / Zoom (A)")
             if (!live) add("<video,audio>speed")
             add("gap")
             add("command:picture_in_picture_alt:script-message-to moncloudi pip?Image dans l'image (Ctrl+P)")
@@ -279,7 +314,7 @@ object ExternalPlayer {
     private fun startMpv(executable: File, options: List<String>, target: String, title: String) {
         fun start(wid: Long?) {
             val ipcPath = MpvIpc.newServerPath()
-            val command = listOf(executable.absolutePath) + windowArgs(wid) + performanceArgs() + "--input-ipc-server=$ipcPath" +
+            val command = listOf(executable.absolutePath) + windowArgs(wid) + performanceArgs(embedded = wid != null) + "--input-ipc-server=$ipcPath" +
                 interfaceArgs(hasNext = false, embedded = wid != null) + options + "--" + target
             val process = ProcessBuilder(command).redirectErrorStream(true)
                 .redirectOutput(File(com.moncloudi.core.AppDirs.logs, "player.log")).start()
@@ -345,8 +380,13 @@ object ExternalPlayer {
         val s = Store.settings
         val defaults = s.subtitleOutlineColor == 0xFF000000L && s.subtitleOutlineSize == 3.0 && s.subtitleBackground == 0
         if (defaults) return
-        kotlinx.coroutines.delay(300)
-        if (process.isAlive) MpvIpc.send(ipcPath, *subtitleStyleCommands().toTypedArray())
+        val cmds = subtitleStyleCommands().toTypedArray()
+        // Wait for mpv's IPC pipe to accept commands cleanly (retry up to ~6 s instead of a single 300 ms guess).
+        val deadline = System.currentTimeMillis() + 6_000
+        while (process.isAlive && System.currentTimeMillis() < deadline) {
+            if (MpvIpc.send(ipcPath, *cmds)) return
+            kotlinx.coroutines.delay(250)
+        }
     }
 
     private fun mpvColor(argb: Long) = "#%08X".format(argb and 0xFFFFFFFFL)

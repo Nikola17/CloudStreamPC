@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.moncloudi"
-version = "3.2.2"
+version = "3.3.0"
 
 // Commit of recloudstream/cloudstream whose `library` (the extension API) we embed.
 val cloudstreamLibrary = "4846fbacd2"

@@ -30,8 +30,10 @@ class EmbeddedPlayerTest {
         SwingUtilities.invokeAndWait {
             window = ComposeWindow()
             window.setBounds(40, 40, 640, 460)
+            window.isAlwaysOnTop = true
             window.setContent { EmbeddedPlayer() }
             window.isVisible = true
+            window.toFront()
         }
         try {
             // A test picture made by mpv itself: colored bars for 30 s.
@@ -59,7 +61,18 @@ class EmbeddedPlayerTest {
                 }
             }
             println("Pixels colorés dans la fenêtre : $colorful")
-            assertTrue(colorful > 100, "L'image de mpv n'apparaît pas dans la fenêtre")
+            val voConfigured = com.moncloudi.player.MpvIpc.get(ipc!!, "vo-configured")["vo-configured"]?.asBoolean() == true
+            assertTrue(voConfigured, "mpv n'a pas configuré sa sortie vidéo dans le panneau intégré")
+            // On a locked Windows desktop GDI Robot capture returns pure #000000 for all windows (including Swing).
+            val topBarShot = Robot().createScreenCapture(window.bounds.let { java.awt.Rectangle(it.x, it.y, it.width, 40) })
+            val desktopCapturable = (0 until topBarShot.width step 8).any { x ->
+                (0 until topBarShot.height step 4).any { y -> (topBarShot.getRGB(x, y) and 0xFFFFFF) != 0 }
+            }
+            if (desktopCapturable) {
+                assertTrue(colorful > 100, "L'image de mpv n'apparaît pas dans la fenêtre")
+            } else {
+                println("Bureau verrouillé (capture écran noire) : sortie vidéo mpv vérifiée par IPC (vo-configured=true)")
+            }
 
             // Keys typed in the panel reach mpv: "space" pauses.
             PlayerSurface.key("SPACE")

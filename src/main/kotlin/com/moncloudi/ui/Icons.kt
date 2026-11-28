@@ -84,6 +84,10 @@ object AppIcons {
     )
     val OpenInFull = icon("OpenInFull", "M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z")
     val Fullscreen = icon("Fullscreen", "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z")
+    val Tune = icon("Tune", "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z")
+    val GraphicEq = icon("GraphicEq", "M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z")
+    val PlaylistPlay = icon("PlaylistPlay", "M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z")
+    val AspectRatio = icon("AspectRatio", "M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z")
 
     private fun icon(name: String, path: String) =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)

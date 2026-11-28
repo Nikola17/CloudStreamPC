@@ -180,8 +180,8 @@ fun PlayerSettings() {
     SettingsSwitch("Plein écran", null, s.fullscreen) { v -> Store.updateSettings { it.copy(fullscreen = v) } }
     if (com.moncloudi.player.PlayerSurface.supported && s.player == com.moncloudi.core.PlayerKind.MPV) {
         SettingsSwitch(
-            "Vidéo dans la fenêtre de l'application (expérimental)",
-            "Désactivé : mpv s'ouvre dans sa propre fenêtre, le plus fiable. Image dans l'image : bouton en haut de la vidéo ou Ctrl+P",
+            "Lecteur intégré dans la fenêtre MonCloudi",
+            "Activé : la vidéo s'ouvre directement dans MonCloudi avec les panneaux Audio, Sous-titres et Sources. Désactivé : mpv s'ouvre dans sa propre fenêtre.",
             s.playerInWindow,
         ) { v -> Store.updateSettings { it.copy(playerInWindow = v) } }
     }

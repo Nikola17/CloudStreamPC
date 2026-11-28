@@ -73,6 +73,7 @@ fun App(nav: Navigator) {
                 // Keyboard / gamepad: the arrows move between posters, buttons and the sidebar (Enter opens).
                 Modifier.fillMaxSize().onKeyEvent { event ->
                     if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+                    if (com.moncloudi.player.PlayerSurface.active && !com.moncloudi.player.PlayerSurface.panelOpen) return@onKeyEvent false
                     val direction = when (event.key) {
                         androidx.compose.ui.input.key.Key.DirectionLeft -> androidx.compose.ui.focus.FocusDirection.Left
                         androidx.compose.ui.input.key.Key.DirectionRight -> androidx.compose.ui.focus.FocusDirection.Right

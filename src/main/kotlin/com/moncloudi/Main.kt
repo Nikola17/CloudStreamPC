@@ -101,6 +101,8 @@ fun main(args: Array<String>) {
     com.moncloudi.core.CrashReport.install()
     com.moncloudi.core.CrashReport.collectJvmCrashes()
     Runtime.getRuntime().addShutdownHook(Thread {
+        runCatching { com.moncloudi.player.PlayerSurface.stopBlocking() }
+        runCatching { com.moncloudi.player.LiveRelay.close() }
         runCatching { SingleInstance.release() }
         runCatching { com.moncloudi.net.ChromiumBrowser.shutdown() }
     })
@@ -110,7 +112,8 @@ fun main(args: Array<String>) {
     // Objects holding Compose state are created here, before any background thread can create them
     // while the window is composing (Compose refuses to read a state born after its snapshot).
     listOf(
-        com.moncloudi.player.PlaybackManager, com.moncloudi.cast.CastManager, com.moncloudi.core.Taste, com.moncloudi.ui.ImageLoader,
+        com.moncloudi.player.PlaybackManager, com.moncloudi.player.PlayerController, com.moncloudi.cast.CastManager,
+        com.moncloudi.core.Taste, com.moncloudi.ui.ImageLoader,
         com.moncloudi.plugins.ExtensionHealth, com.moncloudi.player.PlayerSurface, com.moncloudi.core.Parental,
     )
 
@@ -189,6 +192,8 @@ fun main(args: Array<String>) {
             onCloseRequest = {
                 when {
                     Store.settings.closeToTray && isTraySupported -> {
+                        // Never leave an integrated video playing invisibly with audio in the tray.
+                        if (com.moncloudi.player.PlayerSurface.active) com.moncloudi.player.PlayerSurface.stop()
                         windowVisible = false
                         if (!Store.settings.backgroundHintShown) {
                             Store.updateSettings { it.copy(backgroundHintShown = true) }
@@ -202,7 +207,10 @@ fun main(args: Array<String>) {
                         }
                     }
                     Store.settings.confirmExit -> confirmExit = true
-                    else -> exitApplication()
+                    else -> {
+                        if (com.moncloudi.player.PlayerSurface.active) com.moncloudi.player.PlayerSurface.stopBlocking()
+                        exitApplication()
+                    }
                 }
             },
             state = state,
@@ -217,6 +225,12 @@ fun main(args: Array<String>) {
                 val surface = com.moncloudi.player.PlayerSurface
                 when {
                     event.type != KeyEventType.KeyDown -> false
+                    // Let uosc popup menus handle Escape (close menu) and Backspace (menu search) instead of killing playback.
+                    surface.active && surface.menuOpen && isEsc -> true.also { surface.key("ESC") }
+                    surface.active && surface.menuOpen && isBackspace -> true.also { surface.key("BS") }
+                    // Close the embedded side panel (Subtitles/Audio/Sources/Episodes) first on Escape.
+                    surface.active && surface.panelOpen && isEsc -> true.also { surface.panelOpen = false }
+                    surface.active && surface.panelOpen && isBackspace -> false
                     surface.active && isBackspace -> true.also { surface.stop() }
                     !isBack -> false
                     // Escape leaves full screen / picture in picture first, then closes the video cleanly.

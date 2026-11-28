@@ -1,6 +1,6 @@
--- MonCloudi: "Passer l'intro" and "Épisode suivant" buttons.
+-- MonCloudi: "Passer l'intro", "Épisode suivant", "← Retour", subtitle/audio/aspect helpers.
 -- The app fills in the skip segments and the next episode through the JSON IPC
--- (script-message-to moncloudi ...) and is told about clicks with `script-message moncloudi-next`.
+-- (script-message-to moncloudi ...) and is told about clicks with `script-message moncloudi-*`.
 
 local mp = require 'mp'
 local utils = require 'mp.utils'
@@ -12,7 +12,7 @@ local opts = {
     auto_skip = false,
     skip_button = true,
     live = false,         -- live TV: the end of the stream means "reconnect", never "quit"
-    embedded = false,     -- drawn inside the app's window: the app handles picture in picture
+    embedded = false,     -- drawn inside the app's window: the app handles top bar & picture in picture
 }
 options.read_options(opts, 'moncloudi')
 
@@ -25,6 +25,8 @@ local state = {
     pos = nil,
     duration = nil,
     paused = false,
+    fullscreen = false,
+    uosc_menu_open = false,
     w = 0, h = 0,
     mouse_x = -1, mouse_y = -1,
     last_mouse_move = 0,
@@ -37,6 +39,7 @@ local state = {
     auto_skipped = {},
     message = nil,
     message_until = 0,
+    aspect_mode = 1,      -- 1: Auto, 2: Remplir (sans bandes noires), 3: 16:9, 4: 4:3
 }
 
 local overlay = mp.create_osd_overlay('ass-events')
@@ -109,6 +112,7 @@ local function skip(seg)
 end
 
 local function go_back()
+    if state.uosc_menu_open then return end
     if opts.embedded then
         mp.commandv('script-message', 'moncloudi-back')
     else
@@ -117,6 +121,7 @@ local function go_back()
 end
 
 local function activate()
+    if state.uosc_menu_open then return end
     if state.hovered_target == 'back' then
         go_back()
         return
@@ -128,6 +133,34 @@ local function activate()
     elseif button.kind == 'next' then
         trigger_next('bouton')
     end
+end
+
+local function adjust_sub_delay(delta)
+    if delta == 'reset' then
+        mp.set_property_number('sub-delay', 0)
+        msg('Décalage sous-titres : 0.00 s', 2)
+        return
+    end
+    local d = tonumber(delta) or 0
+    local cur = mp.get_property_number('sub-delay', 0) or 0
+    local next_val = math.floor((cur + d) * 100 + 0.5) / 100
+    mp.set_property_number('sub-delay', next_val)
+    msg(string.format('Décalage sous-titres : %+.2f s', next_val), 2)
+end
+
+local ASPECT_MODES = {
+    { label = 'Format : Auto', aspect = '-1', panscan = 0.0 },
+    { label = 'Format : Remplir l\'écran', aspect = '-1', panscan = 1.0 },
+    { label = 'Format : 16:9', aspect = '16:9', panscan = 0.0 },
+    { label = 'Format : 4:3', aspect = '4:3', panscan = 0.0 },
+}
+
+local function cycle_aspect()
+    state.aspect_mode = (state.aspect_mode % #ASPECT_MODES) + 1
+    local m = ASPECT_MODES[state.aspect_mode]
+    mp.set_property('video-aspect-override', m.aspect)
+    mp.set_property_number('panscan', m.panscan)
+    msg(m.label, 2)
 end
 
 ---------------------------------------------------------------------------
@@ -188,9 +221,10 @@ local function set_click_binding(enabled)
     end
 end
 
--- Enter activates the visible button. Bound once: adding and removing bindings while paused makes uosc spin.
-mp.add_forced_key_binding('ENTER', 'moncloudi-enter', activate)
-mp.add_forced_key_binding('KP_ENTER', 'moncloudi-kp-enter', activate)
+-- Regular (non-forced) key bindings so uosc's forced menu bindings (Subtitles, Audio, Sources, etc.)
+-- always take priority when a uosc menu is open!
+mp.add_key_binding('ENTER', 'moncloudi-enter', activate)
+mp.add_key_binding('KP_ENTER', 'moncloudi-kp-enter', activate)
 
 local function render()
     local now = mp.get_time()
@@ -213,8 +247,10 @@ local function render()
 
     local hovered_target = nil
 
-    -- Top-left "← Retour" pill: visible when moving the mouse, hovering it, or paused.
-    local show_back = state.paused or (now - state.last_mouse_move < 2.6)
+    -- Top-left "← Retour" pill: hidden when a uosc menu is open (never block clicks on menus),
+    -- and hidden in embedded windowed mode where MonCloudi's own top bar already has a Back button.
+    local want_back_overlay = (not opts.embedded) or state.fullscreen
+    local show_back = want_back_overlay and (not state.uosc_menu_open) and (state.paused or (now - state.last_mouse_move < 2.6))
     if show_back then
         local bfont = math.floor(22 * s)
         local blabel = '←  Retour'
@@ -240,7 +276,7 @@ local function render()
         state.back_button = nil
     end
 
-    if button then
+    if button and not state.uosc_menu_open then
         local font = math.floor(26 * s)
         local label = button.label
         local progress = nil
@@ -316,6 +352,15 @@ mp.observe_property('osd-dimensions', 'native', function(_, dim)
     if dim then state.w, state.h = dim.w, dim.h end
 end)
 mp.observe_property('pause', 'bool', function(_, value) state.paused = value == true end)
+mp.observe_property('fullscreen', 'bool', function(_, value) state.fullscreen = value == true end)
+mp.observe_property('user-data/uosc/menu/type', 'string', function(_, value)
+    state.uosc_menu_open = value ~= nil and value ~= ''
+    if state.uosc_menu_open and state.hovered_target ~= nil then
+        state.hovered_target = nil
+        set_click_binding(false)
+    end
+    render()
+end)
 mp.observe_property('mouse-pos', 'native', function(_, mouse)
     if mouse then
         local nx = mouse.hover and mouse.x or -1
@@ -374,6 +419,19 @@ mp.register_script_message('back', go_back)
 mp.add_key_binding('BS', 'moncloudi-back-key', go_back)
 mp.register_script_message('next', function() trigger_next('commande') end)
 mp.add_key_binding('N', 'moncloudi-next-episode', function() trigger_next('touche N') end)
+mp.register_script_message('sources', function() mp.commandv('script-message', 'moncloudi-sources') end)
+mp.register_script_message('switch-source', function(url)
+    if url and url ~= '' then mp.commandv('script-message', 'moncloudi-switch-source', url) end
+end)
+mp.register_script_message('episodes', function() mp.commandv('script-message', 'moncloudi-episodes') end)
+mp.register_script_message('switch-episode', function(idx)
+    if idx and idx ~= '' then mp.commandv('script-message', 'moncloudi-switch-episode', idx) end
+end)
+mp.register_script_message('aspect', cycle_aspect)
+mp.add_key_binding('a', 'moncloudi-aspect-key', cycle_aspect)
+mp.register_script_message('sub-delay', adjust_sub_delay)
+mp.add_key_binding('z', 'moncloudi-sub-delay-minus', function() adjust_sub_delay('-0.25') end)
+mp.add_key_binding('x', 'moncloudi-sub-delay-plus', function() adjust_sub_delay('0.25') end)
 
 -- Live TV: next / previous channel and the channel list (the app answers with the new channel).
 local function zap(delta)

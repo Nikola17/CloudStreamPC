@@ -116,5 +116,5 @@ private suspend fun playback(shot: suspend (String, Long) -> Unit, steps: Mutabl
             }
         }
     }
-    com.moncloudi.core.Store.updateSettings { it.copy(playerInWindow = false) }
+    com.moncloudi.core.Store.updateSettings { it.copy(playerInWindow = true) }
 }

@@ -43,9 +43,15 @@ object GamepadInput {
         Thread(::loop, "gamepad").apply { isDaemon = true }.start()
     }
 
-    /** Only while MonCloudi (or the player it opened) is in front: never in another app's game. */
-    private fun ourWindowsInFront() =
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow != null || PlaybackManager.nowPlaying != null
+    /**
+     * Only while MonCloudi (or a standalone external player it opened) is in front: never hijack
+     * another app or game when the integrated player is minimized/unfocused.
+     */
+    private fun ourWindowsInFront(): Boolean {
+        if (KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow != null) return true
+        if (com.moncloudi.player.PlayerSurface.active) return false
+        return PlaybackManager.nowPlaying != null
+    }
 
     private fun loop() {
         val manager = runCatching {

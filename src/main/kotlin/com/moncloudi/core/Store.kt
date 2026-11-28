@@ -113,10 +113,10 @@ data class Settings(
     /** Seconds, positive shows them later. */
     val subtitleDelay: Double = 0.0,
     /**
-     * The video plays inside the app's window (Windows, Linux) instead of a window of its own.
-     * Experimental, off by default (the v3.0 setting `embeddedPlayer`, on for everyone, is no longer read).
+     * The video plays inside MonCloudi's window (Windows, Linux) with integrated Audio/Subtitles/Sources
+     * controls, instead of opening a separate mpv window. Enabled by default from v3.3.0.
      */
-    val playerInWindow: Boolean = false,
+    val playerInWindow: Boolean = true,
     /** Phone remote: a page on the local network that drives the player. */
     val remoteControl: Boolean = false,
     /** Modern controls (uosc) and the "Passer l'intro" / "Épisode suivant" buttons in the bundled mpv. */
@@ -326,7 +326,7 @@ data class NewEpisode(
     val foundAt: Long = 0,
 )
 
-private const val SETTINGS_VERSION = 2
+private const val SETTINGS_VERSION = 3
 
 /** Persistent app state, observable from Compose. */
 object Store {
@@ -343,6 +343,10 @@ object Store {
         if (s.settingsVersion < 2) {
             // v2: the best source always plays directly, like the user asked.
             s = s.copy(autoPlayBestSource = true)
+        }
+        if (s.settingsVersion < 3) {
+            // v3: stabilized integrated player inside MonCloudi's window enabled by default.
+            s = s.copy(playerInWindow = true)
         }
         if (s.profiles.isEmpty()) s = s.copy(profiles = listOf(Profile()), currentProfile = "default")
         return s.copy(settingsVersion = SETTINGS_VERSION)
